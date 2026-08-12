@@ -89,6 +89,17 @@ window.__LUMA_API_BASE__ = 'http://127.0.0.1:8000';
 | `FRONTEND_ORIGINS` | Production frontend URL |
 | `PUBLIC_BASE_URL` | QR / upload linkleri için frontend domain |
 | `ADMIN_PASSWORD` | Varsayılan şifreyi değiştirin |
+| `LOGINS_PER_MINUTE` | Admin giriş brute-force limiti (varsayılan 10) |
+| `MESSAGES_PER_MINUTE` | Anı defteri spam limiti (varsayılan 20) |
+
+## Özellikler
+
+- Etkinlik / davetiye / RSVP / misafir CRUD
+- Fotoğraf yükleme + moderasyon (`uploaded` → `approved` → `hidden`)
+- Anı defteri moderasyonu (`pending` → `approved` → `hidden`)
+- Admin profil (`GET/PATCH /api/admin/me`, görünen ad)
+- Alembic migration (uygulama açılışında otomatik)
+- `/health` — veritabanı + depolama kontrolü
 
 ## Testler
 

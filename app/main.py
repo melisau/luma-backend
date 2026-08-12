@@ -152,6 +152,24 @@ def health():
     finally:
         db.close()
 
+    settings = get_settings()
+    try:
+        if settings.storage_backend == "local":
+            storage_path = settings.local_storage_path.expanduser()
+            storage_path.mkdir(parents=True, exist_ok=True)
+            payload["storage"] = "ok" if storage_path.is_dir() else "error"
+        elif settings.storage_bucket and settings.storage_access_key_id:
+            payload["storage"] = "configured"
+        else:
+            payload["storage"] = "error"
+    except Exception:
+        logger.exception("Health check storage probe failed")
+        payload["storage"] = "error"
+
+    if payload.get("storage") == "error":
+        payload["status"] = "degraded"
+        return JSONResponse(status_code=503, content=payload)
+
     return payload
 
 

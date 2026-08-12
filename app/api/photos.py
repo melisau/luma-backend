@@ -23,7 +23,7 @@ from app.schemas.photo import (
 )
 from app.services.event_service import create_event_admin, delete_event_admin, event_to_admin, update_event_admin
 from app.services.photo_service import PhotoService
-from app.services.rate_limit import enforce_upload_rate_limit
+from app.services.rate_limit import enforce_login_rate_limit, enforce_upload_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +208,9 @@ def get_photo_thumbnail(
 
 
 @router.post("/admin/login", response_model=AdminLoginResponse)
-def admin_login(payload: AdminLoginRequest, db: Session = Depends(get_db)):
+def admin_login(payload: AdminLoginRequest, request: Request, db: Session = Depends(get_db)):
+    client_ip = request.client.host if request.client else "unknown"
+    enforce_login_rate_limit(client_ip)
     admin = db.query(AdminUser).filter(AdminUser.email == payload.email.lower()).one_or_none()
     if not admin or not verify_password(payload.password, admin.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geçersiz kimlik bilgileri.")

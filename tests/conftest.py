@@ -65,6 +65,19 @@ def client(tmp_path, monkeypatch):
         yield test_client
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limiters():
+    from app.services.rate_limit import login_rate_limiter, message_rate_limiter, upload_rate_limiter
+
+    login_rate_limiter._events.clear()
+    message_rate_limiter._events.clear()
+    upload_rate_limiter._events.clear()
+    yield
+    login_rate_limiter._events.clear()
+    message_rate_limiter._events.clear()
+    upload_rate_limiter._events.clear()
+
+
 @pytest.fixture()
 def admin_headers(client):
     response = client.post(

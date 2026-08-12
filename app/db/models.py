@@ -30,6 +30,12 @@ class GuestSource(str, enum.Enum):
     EXTERNAL = "external"
 
 
+class MessageStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    HIDDEN = "hidden"
+
+
 class AdminUser(Base):
     __tablename__ = "admin_users"
 
@@ -100,6 +106,7 @@ class GuestbookMessage(Base):
     event_id: Mapped[str] = mapped_column(String(36), ForeignKey("events.id"), index=True)
     name: Mapped[str] = mapped_column(String(255))
     message: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), default=MessageStatus.PENDING.value, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     event: Mapped[Event] = relationship(back_populates="messages")

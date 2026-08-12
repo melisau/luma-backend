@@ -33,6 +33,12 @@ def test_guestbook_message_flow(client, admin_headers):
         json={"name": "Zeynep", "message": "Mutluluklar dilerim."},
     )
     assert create.status_code == 200
+    message_id = create.json()["id"]
+    client.patch(
+        f"/api/admin/events/{TOKEN}/messages/{message_id}",
+        headers=admin_headers,
+        json={"status": "approved"},
+    )
     listed = client.get(f"/api/admin/events/{TOKEN}/messages", headers=admin_headers)
     assert listed.status_code == 200
     assert any(item["message"] == "Mutluluklar dilerim." for item in listed.json())

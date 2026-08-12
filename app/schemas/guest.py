@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 GuestStatusLiteral = Literal["attending", "declined", "pending"]
 GuestSourceLiteral = Literal["admin", "external"]
+MessageStatusLiteral = Literal["pending", "approved", "hidden"]
 
 
 class GuestPublic(BaseModel):
@@ -49,9 +50,14 @@ class GuestbookMessagePublic(BaseModel):
     id: str
     name: str
     message: str
+    status: MessageStatusLiteral = "approved"
     created_at: datetime
 
 
 class GuestbookMessageCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     message: str = Field(min_length=1, max_length=5000)
+
+
+class GuestbookMessageUpdateAdmin(BaseModel):
+    status: MessageStatusLiteral

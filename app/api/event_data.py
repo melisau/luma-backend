@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ from app.schemas.guest import (
     GuestUpdateAdmin,
     GuestbookMessageCreate,
     GuestbookMessagePublic,
+    GuestbookMessageUpdateAdmin,
     RsvpSubmit,
 )
 from app.schemas.invitation import InvitationPublic, InvitationUpdateAdmin
@@ -34,7 +35,9 @@ from app.services.event_data_service import (
     submit_rsvp,
     update_guest_admin,
     update_invitation_admin,
+    update_message_admin,
 )
+from app.services.rate_limit import enforce_message_rate_limit
 from app.services.invitation_cover_service import InvitationCoverService
 from app.services.invitation_music_service import InvitationMusicService
 
@@ -124,15 +127,21 @@ def public_rsvp(
 @router.get("/events/{event_token}/messages", response_model=list[GuestbookMessagePublic])
 def list_public_messages(event_token: str, db: Session = Depends(get_db)):
     event = get_event_by_token(db, event_token)
-    return [GuestbookMessagePublic.model_validate(item) for item in list_messages(db, event)]
+    return [
+        GuestbookMessagePublic.model_validate(item)
+        for item in list_messages(db, event, approved_only=True)
+    ]
 
 
 @router.post("/events/{event_token}/messages", response_model=GuestbookMessagePublic)
 def create_public_message(
     event_token: str,
     payload: GuestbookMessageCreate,
+    request: Request,
     db: Session = Depends(get_db),
 ):
+    client_ip = request.client.host if request.client else "unknown"
+    enforce_message_rate_limit(client_ip, event_token)
     event = get_event_by_token(db, event_token)
     item = create_message(db, event, payload.name, payload.message)
     return GuestbookMessagePublic.model_validate(item)
@@ -192,6 +201,19 @@ def admin_list_messages(
 ):
     event = get_event_or_404(db, event_token)
     return [GuestbookMessagePublic.model_validate(item) for item in list_messages(db, event)]
+
+
+@router.patch("/admin/events/{event_token}/messages/{message_id}", response_model=GuestbookMessagePublic)
+def admin_update_message(
+    event_token: str,
+    message_id: str,
+    payload: GuestbookMessageUpdateAdmin,
+    db: Session = Depends(get_db),
+    _admin: AdminUser = Depends(get_current_admin),
+):
+    event = get_event_or_404(db, event_token)
+    item = update_message_admin(db, event, message_id, payload.status)
+    return GuestbookMessagePublic.model_validate(item)
 
 
 @router.delete("/admin/events/{event_token}/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT)

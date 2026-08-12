@@ -53,6 +53,15 @@ def migrate_db() -> None:
             if name not in existing:
                 connection.execute(text(f"ALTER TABLE events ADD COLUMN {name} {ddl}"))
 
+        if inspector.has_table("guestbook_messages"):
+            message_columns = {column["name"] for column in inspector.get_columns("guestbook_messages")}
+            if "status" not in message_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE guestbook_messages ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'approved'"
+                    )
+                )
+
 
 def run_alembic_migrations() -> None:
     try:

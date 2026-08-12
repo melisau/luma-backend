@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.db.models import Contact, Event, Guest, GuestSource, GuestbookMessage, GuestStatus, utc_now
+from app.db.models import Contact, Event, Guest, GuestSource, GuestbookMessage, GuestStatus, MessageStatus, utc_now
 from app.schemas.guest import GuestCreateAdmin, GuestUpdateAdmin, RsvpSubmit
 from app.schemas.invitation import InvitationUpdateAdmin
 from app.services.activity_service import record_activity
@@ -125,13 +125,11 @@ def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> Guest:
     return guest
 
 
-def list_messages(db: Session, event: Event) -> list[GuestbookMessage]:
-    return (
-        db.query(GuestbookMessage)
-        .filter(GuestbookMessage.event_id == event.id)
-        .order_by(GuestbookMessage.created_at.desc())
-        .all()
-    )
+def list_messages(db: Session, event: Event, *, approved_only: bool = False) -> list[GuestbookMessage]:
+    query = db.query(GuestbookMessage).filter(GuestbookMessage.event_id == event.id)
+    if approved_only:
+        query = query.filter(GuestbookMessage.status == MessageStatus.APPROVED.value)
+    return query.order_by(GuestbookMessage.created_at.desc()).all()
 
 
 def create_message(db: Session, event: Event, name: str, message: str) -> GuestbookMessage:
@@ -141,11 +139,40 @@ def create_message(db: Session, event: Event, name: str, message: str) -> Guestb
         event_id=event.id,
         name=name.strip(),
         message=message.strip(),
+        status=MessageStatus.PENDING.value,
     )
     db.add(item)
     db.commit()
     db.refresh(item)
-    record_activity(db, event, f"{item.name} anı defterine yazdı", "book")
+    record_activity(db, event, f"{item.name} anı defterine yazdı (onay bekliyor)", "book")
+    return item
+
+
+def update_message_admin(
+    db: Session,
+    event: Event,
+    message_id: str,
+    status: str,
+) -> GuestbookMessage:
+    allowed = {
+        MessageStatus.PENDING.value,
+        MessageStatus.APPROVED.value,
+        MessageStatus.HIDDEN.value,
+    }
+    if status not in allowed:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Geçersiz mesaj durumu.")
+    item = (
+        db.query(GuestbookMessage)
+        .filter(GuestbookMessage.id == message_id, GuestbookMessage.event_id == event.id)
+        .one_or_none()
+    )
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mesaj bulunamadı.")
+    item.status = status
+    db.commit()
+    db.refresh(item)
+    if status == MessageStatus.APPROVED.value:
+        record_activity(db, event, f"{item.name} mesajı onaylandı", "book")
     return item
 
 
