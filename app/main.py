@@ -1,17 +1,21 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 import logging
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.api.event_data import router as event_data_router
 from app.api.events import router as events_router
 from app.api.photos import router as photos_router
 from app.core.config import get_settings
 from app.core.security import generate_event_token, hash_password, mask_token
-from app.db.database import SessionLocal, init_db
+from app.db import database as db_module
+from app.db.database import init_db
 from app.db.models import AdminUser, Event
 
 logger = logging.getLogger(__name__)
@@ -26,7 +30,7 @@ PRIVATE_HEADERS = {
 
 def seed_database() -> None:
     settings = get_settings()
-    db: Session = SessionLocal()
+    db: Session = db_module.SessionLocal()
     try:
         if not db.query(AdminUser).first():
             db.add(
@@ -43,6 +47,16 @@ def seed_database() -> None:
                     name=settings.seed_event_name,
                     slug="melisa-berk",
                     private_token=token,
+                    event_date=datetime(2026, 9, 6, 15, 30, tzinfo=timezone.utc),
+                    venue="The Marmara Esma Sultan",
+                    city="İstanbul",
+                    tagline="Birlikte, sonsuza...",
+                    story_title="Hayat, seninle daha güzel.",
+                    story_text=(
+                        "Bir kahveyle başlayan hikâyemiz, şimdi en güzel “evet”e hazırlanıyor. "
+                        "Bu özel günümüzde sevincimizi sizinle paylaşmak için sabırsızlanıyoruz."
+                    ),
+                    guest_note="Şıklığınızı yansıtan kokteyl veya gece kıyafeti.",
                 )
             )
             db.commit()
@@ -92,6 +106,7 @@ app.add_middleware(
 
 app.include_router(events_router, prefix="/api")
 app.include_router(photos_router, prefix="/api")
+app.include_router(event_data_router, prefix="/api")
 
 frontend_dir = settings.resolved_frontend_path
 if frontend_dir:
@@ -118,9 +133,25 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 @app.get("/health")
 def health():
-    payload = {"status": "ok", "frontend": bool(frontend_dir)}
+    payload: dict[str, str | bool] = {
+        "status": "ok",
+        "frontend": bool(frontend_dir),
+    }
     if frontend_dir:
         payload["frontend_path"] = str(frontend_dir)
+
+    db = db_module.SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        payload["database"] = "ok"
+    except Exception:
+        logger.exception("Health check database probe failed")
+        payload["status"] = "degraded"
+        payload["database"] = "error"
+        return JSONResponse(status_code=503, content=payload)
+    finally:
+        db.close()
+
     return payload
 
 

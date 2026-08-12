@@ -7,63 +7,94 @@ FastAPI tabanlı davetiye fotoğraf API'si. Frontend ayrı repoda barınır.
 ```text
 backend/
 ├── app/
-│   ├── main.py
-│   ├── api/events.py, photos.py
-│   ├── core/config.py, security.py
-│   ├── db/database.py, models.py
-│   ├── services/storage.py, photo_service.py, rate_limit.py
-│   └── schemas/
 ├── tests/
+├── Dockerfile
+├── docker-compose.yml
 ├── requirements.txt
 └── .env.example
 ```
 
-## Kurulum
+## Kurulum (yerel)
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 cp .env.example .env
-# .env içinde SECRET_KEY ve ADMIN_PASSWORD güncelleyin
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-- Sağlık kontrolü: http://127.0.0.1:8000/health
-- API dokümantasyonu: http://127.0.0.1:8000/docs
+Monorepo workspace'te frontend'i birlikte servis etmek için `.env` içinde `SERVE_FRONTEND=true` bırakın.
 
-## Frontend ile birlikte çalıştırma
+- Sağlık: http://127.0.0.1:8000/health
+- API docs: http://127.0.0.1:8000/docs
 
-1. Backend bu repoda `8000` portunda çalışsın.
-2. Frontend reposunda `js/config.local.js` oluşturun:
+## Veritabanı migration (Alembic)
+
+Uygulama açılışında otomatik `alembic upgrade head` çalışır. Elle çalıştırmak için:
+
+```bash
+cd backend
+PYTHONPATH=. alembic upgrade head
+```
+
+Yeni model/sütun ekledikten sonra:
+
+```bash
+PYTHONPATH=. alembic revision -m "açıklama"
+# ardından upgrade
+PYTHONPATH=. alembic upgrade head
+```
+
+## Docker
+
+SQLite (geliştirme):
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+PostgreSQL:
+
+```bash
+cp .env.example .env
+# .env → DATABASE_URL=postgresql+psycopg2://luma:luma@db:5432/luma
+docker compose --profile postgres up --build
+```
+
+API servisi PostgreSQL hazır olana kadar bekler (`depends_on` + healthcheck).
+
+Production şablonu: `.env.production.example`
+
+## Frontend ile birlikte (ayrı repolar)
+
+1. Backend `8000` portunda.
+2. Frontend `js/config.local.js`:
 
 ```js
 window.__LUMA_API_BASE__ = 'http://127.0.0.1:8000';
 ```
 
-3. `.env` içinde `FRONTEND_ORIGINS` değerine frontend adresini ekleyin (ör. `http://127.0.0.1:5500`).
+3. `.env` → `FRONTEND_ORIGINS` içine frontend adresini ekleyin.
 
-## API uç noktaları
+## Production checklist
 
-| Method | Path | Açıklama |
-|--------|------|----------|
-| GET | `/health` | Sağlık kontrolü |
-| GET | `/api/events/{event_token}` | Etkinlik bilgisi |
-| POST | `/api/events/{event_token}/photos` | Fotoğraf yükleme |
-| GET | `/api/photos/{photo_id}` | Korunan görsel |
-| POST | `/api/admin/login` | Yönetici JWT |
-
-Tam liste için kök workspace README'sine bakın.
+| Ayar | Açıklama |
+|------|----------|
+| `SECRET_KEY` | Güçlü rastgele değer |
+| `DATABASE_URL` | PostgreSQL (`postgresql+psycopg2://...`) |
+| `STORAGE_BACKEND=s3` | Cloudflare R2 veya S3 private bucket |
+| `SERVE_FRONTEND=false` | Frontend ayrı CDN'de |
+| `FRONTEND_ORIGINS` | Production frontend URL |
+| `PUBLIC_BASE_URL` | QR / upload linkleri için frontend domain |
+| `ADMIN_PASSWORD` | Varsayılan şifreyi değiştirin |
 
 ## Testler
 
 ```bash
-pytest tests/test_security.py -q
+pip install -r requirements-dev.txt
+PYTHONPATH=. pytest -q
 ```
 
-## Production
-
-1. PostgreSQL + güçlü `SECRET_KEY`
-2. Private S3/R2 bucket (`STORAGE_BACKEND=s3`)
-3. `FRONTEND_ORIGINS` → production frontend URL
-4. `PUBLIC_BASE_URL` → QR kodları için frontend domain
+CI: GitHub Actions — push/PR'da testler ve Docker smoke test (`.github/workflows/ci.yml`).

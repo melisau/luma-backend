@@ -1,0 +1,42 @@
+# Yerel geliştirme (SQLite):
+#   cp .env.example .env && docker compose up --build
+#
+# PostgreSQL ile:
+#   cp .env.example .env
+#   # .env içinde DATABASE_URL=postgresql+psycopg2://luma:luma@db:5432/luma
+#   docker compose --profile postgres up --build
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - luma_uploads:/app/private_uploads
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+
+  db:
+    profiles: ["postgres"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-luma}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-luma}
+      POSTGRES_DB: ${POSTGRES_DB:-luma}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-luma} -d ${POSTGRES_DB:-luma}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  luma_uploads:
+  pgdata:
