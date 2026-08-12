@@ -42,16 +42,18 @@ def client(tmp_path, monkeypatch):
     db = db_module.SessionLocal()
     try:
         settings = get_settings()
-        if not db.query(AdminUser).first():
-            db.add(
-                AdminUser(
-                    email=settings.admin_email.lower(),
-                    password_hash=hash_password(settings.admin_password),
-                )
+        admin = db.query(AdminUser).filter(AdminUser.email == settings.admin_email.lower()).one_or_none()
+        if not admin:
+            admin = AdminUser(
+                email=settings.admin_email.lower(),
+                password_hash=hash_password(settings.admin_password),
             )
+            db.add(admin)
+            db.flush()
         if not db.query(Event).filter(Event.private_token == "event-a-token-123456789012345678901234").first():
             db.add(
                 Event(
+                    admin_id=admin.id,
                     name="Test Event",
                     slug="test-event",
                     private_token="event-a-token-123456789012345678901234",

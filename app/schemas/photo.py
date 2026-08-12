@@ -60,6 +60,12 @@ class AdminLoginRequest(BaseModel):
     password: str
 
 
+class AdminRegisterRequest(BaseModel):
+    email: str
+    password: str = Field(min_length=8)
+    display_name: str | None = Field(default=None, max_length=255)
+
+
 class AdminLoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

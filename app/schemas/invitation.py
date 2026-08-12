@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class InvitationPublic(BaseModel):
@@ -21,7 +21,7 @@ class InvitationPublic(BaseModel):
 
 
 class InvitationUpdateAdmin(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=255)
+    name: str | None = Field(default=None, max_length=255)
     event_date: datetime | None = None
     venue: str | None = None
     city: str | None = None
@@ -29,3 +29,10 @@ class InvitationUpdateAdmin(BaseModel):
     story_title: str | None = None
     story_text: str | None = None
     guest_note: str | None = None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def empty_name_to_none(cls, value: str | None) -> str | None:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value

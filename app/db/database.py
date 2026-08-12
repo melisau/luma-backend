@@ -62,6 +62,22 @@ def migrate_db() -> None:
                     )
                 )
 
+        if inspector.has_table("events"):
+            event_columns = {column["name"] for column in inspector.get_columns("events")}
+            if "admin_id" not in event_columns and inspector.has_table("admin_users"):
+                connection.execute(text("ALTER TABLE events ADD COLUMN admin_id VARCHAR(36)"))
+                connection.execute(
+                    text(
+                        """
+                        UPDATE events
+                        SET admin_id = (
+                            SELECT id FROM admin_users ORDER BY created_at ASC LIMIT 1
+                        )
+                        WHERE admin_id IS NULL
+                        """
+                    )
+                )
+
 
 def run_alembic_migrations() -> None:
     try:

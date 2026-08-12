@@ -32,31 +32,24 @@ def seed_database() -> None:
     settings = get_settings()
     db: Session = db_module.SessionLocal()
     try:
-        if not db.query(AdminUser).first():
-            db.add(
-                AdminUser(
-                    email=settings.admin_email.lower(),
-                    password_hash=hash_password(settings.admin_password),
-                )
+        admin = db.query(AdminUser).filter(AdminUser.email == settings.admin_email.lower()).one_or_none()
+        if not admin:
+            admin = AdminUser(
+                email=settings.admin_email.lower(),
+                password_hash=hash_password(settings.admin_password),
             )
+            db.add(admin)
+            db.flush()
 
-        if not db.query(Event).first():
+        if not db.query(Event).filter(Event.admin_id == admin.id).first():
             token = settings.seed_event_token or generate_event_token()
             db.add(
                 Event(
+                    admin_id=admin.id,
                     name=settings.seed_event_name,
-                    slug="melisa-berk",
+                    slug="ornek-etkinlik",
                     private_token=token,
                     event_date=datetime(2026, 9, 6, 15, 30, tzinfo=timezone.utc),
-                    venue="The Marmara Esma Sultan",
-                    city="İstanbul",
-                    tagline="Birlikte, sonsuza...",
-                    story_title="Hayat, seninle daha güzel.",
-                    story_text=(
-                        "Bir kahveyle başlayan hikâyemiz, şimdi en güzel “evet”e hazırlanıyor. "
-                        "Bu özel günümüzde sevincimizi sizinle paylaşmak için sabırsızlanıyoruz."
-                    ),
-                    guest_note="Şıklığınızı yansıtan kokteyl veya gece kıyafeti.",
                 )
             )
             db.commit()

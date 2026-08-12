@@ -1,6 +1,5 @@
 import re
 import unicodedata
-from datetime import datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -17,14 +16,29 @@ def slugify_name(name: str) -> str:
     return (slug[:64] or "etkinlik")
 
 
-def unique_slug(db: Session, base_slug: str) -> str:
+def unique_slug(db: Session, base_slug: str, admin_id: str) -> str:
     slug = base_slug
     counter = 2
-    while db.query(Event).filter(Event.slug == slug).first():
+    while (
+        db.query(Event)
+        .filter(Event.slug == slug, Event.admin_id == admin_id)
+        .first()
+    ):
         suffix = f"-{counter}"
         slug = f"{base_slug[: max(1, 64 - len(suffix))]}{suffix}"
         counter += 1
     return slug
+
+
+def get_admin_event_or_404(db: Session, event_token: str, admin_id: str) -> Event:
+    event = (
+        db.query(Event)
+        .filter(Event.private_token == event_token, Event.admin_id == admin_id)
+        .one_or_none()
+    )
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Etkinlik bulunamadı.")
+    return event
 
 
 def event_to_admin(event: Event):
@@ -44,10 +58,11 @@ def event_to_admin(event: Event):
     )
 
 
-def create_event_admin(db: Session, payload: EventCreateAdmin) -> Event:
+def create_event_admin(db: Session, payload: EventCreateAdmin, admin_id: str) -> Event:
     base_slug = payload.slug.strip() if payload.slug else slugify_name(payload.name)
-    slug = unique_slug(db, slugify_name(base_slug))
+    slug = unique_slug(db, slugify_name(base_slug), admin_id)
     event = Event(
+        admin_id=admin_id,
         name=payload.name.strip(),
         slug=slug,
         private_token=generate_event_token(),
@@ -73,7 +88,7 @@ def update_event_admin(db: Session, event: Event, payload: EventUpdateAdmin) -> 
         candidate = slugify_name(data["slug"])
         conflict = (
             db.query(Event)
-            .filter(Event.slug == candidate, Event.id != event.id)
+            .filter(Event.slug == candidate, Event.id != event.id, Event.admin_id == event.admin_id)
             .first()
         )
         if conflict:
@@ -117,7 +132,9 @@ def delete_event_admin(db: Session, event: Event) -> None:
     db.commit()
 
 
-def parse_event_date(value: str | None) -> datetime | None:
+def parse_event_date(value: str | None):
+    from datetime import datetime
+
     if not value:
         return None
     try:

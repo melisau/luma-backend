@@ -5,6 +5,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.api.photos import get_current_admin, get_event_by_token
+from app.services.event_service import get_admin_event_or_404
 from app.db.database import get_db
 from app.db.models import AdminUser
 from app.schemas.activity import ActivityCreate, ActivityPublic
@@ -151,9 +152,9 @@ def create_public_message(
 def admin_list_guests(
     event_token: str,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     return [GuestPublic.model_validate(item) for item in list_guests(db, event)]
 
 
@@ -162,9 +163,9 @@ def admin_create_guest(
     event_token: str,
     payload: GuestCreateAdmin,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     guest = create_guest_admin(db, event, payload)
     return GuestPublic.model_validate(guest)
 
@@ -175,9 +176,9 @@ def admin_update_guest(
     guest_id: str,
     payload: GuestUpdateAdmin,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     guest = update_guest_admin(db, event, guest_id, payload)
     return GuestPublic.model_validate(guest)
 
@@ -187,9 +188,9 @@ def admin_delete_guest(
     event_token: str,
     guest_id: str,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     delete_guest_admin(db, event, guest_id)
 
 
@@ -197,9 +198,9 @@ def admin_delete_guest(
 def admin_list_messages(
     event_token: str,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     return [GuestbookMessagePublic.model_validate(item) for item in list_messages(db, event)]
 
 
@@ -209,9 +210,9 @@ def admin_update_message(
     message_id: str,
     payload: GuestbookMessageUpdateAdmin,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     item = update_message_admin(db, event, message_id, payload.status)
     return GuestbookMessagePublic.model_validate(item)
 
@@ -221,9 +222,9 @@ def admin_delete_message(
     event_token: str,
     message_id: str,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     delete_message_admin(db, event, message_id)
 
 
@@ -231,9 +232,9 @@ def admin_delete_message(
 def admin_list_activities(
     event_token: str,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     return [ActivityPublic.model_validate(item) for item in list_activities(db, event)]
 
 
@@ -246,9 +247,9 @@ def admin_create_activity(
     event_token: str,
     payload: ActivityCreate,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     item = record_activity(db, event, payload.text, payload.kind)
     return ActivityPublic.model_validate(item)
 
@@ -257,11 +258,11 @@ def admin_create_activity(
 def admin_get_invitation(
     event_token: str,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     return _invitation_public(event, event_token, covers, music)
 
 
@@ -270,11 +271,11 @@ def admin_update_invitation(
     event_token: str,
     payload: InvitationUpdateAdmin,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     event = update_invitation_admin(db, event, payload)
     return _invitation_public(event, event_token, covers, music)
 
@@ -284,11 +285,11 @@ async def admin_upload_cover(
     event_token: str,
     file: Annotated[UploadFile, File()],
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     event = covers.upload_cover(db, event, file)
     return _invitation_public(event, event_token, covers, music)
 
@@ -297,11 +298,11 @@ async def admin_upload_cover(
 def admin_delete_cover(
     event_token: str,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     event = covers.remove_cover(db, event)
     return _invitation_public(event, event_token, covers, music)
 
@@ -311,11 +312,11 @@ async def admin_upload_music(
     event_token: str,
     file: Annotated[UploadFile, File()],
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     event = music.upload_music(db, event, file)
     record_activity(db, event, "Davetiye müziği güncellendi", "sparkle")
     return _invitation_public(event, event_token, covers, music)
@@ -325,11 +326,11 @@ async def admin_upload_music(
 def admin_delete_music(
     event_token: str,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     event = music.remove_music(db, event)
     record_activity(db, event, "Davetiye müziği kaldırıldı", "sparkle")
     return _invitation_public(event, event_token, covers, music)

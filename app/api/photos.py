@@ -15,13 +15,20 @@ from app.schemas.photo import (
     AdminChangePasswordRequest,
     AdminLoginRequest,
     AdminLoginResponse,
+    AdminRegisterRequest,
     PhotoAdmin,
     PhotoPublic,
     PhotoUpdateAdmin,
     PhotoUploadResponse,
     SignedPhotoResponse,
 )
-from app.services.event_service import create_event_admin, delete_event_admin, event_to_admin, update_event_admin
+from app.services.event_service import (
+    create_event_admin,
+    delete_event_admin,
+    event_to_admin,
+    get_admin_event_or_404,
+    update_event_admin,
+)
 from app.services.photo_service import PhotoService
 from app.services.rate_limit import enforce_login_rate_limit, enforce_upload_rate_limit
 
@@ -148,8 +155,8 @@ def get_photo(
 ):
     photo = None
     if authorization and authorization.startswith("Bearer "):
-        _resolve_admin(authorization, db)
-        photo = photos.get_photo_admin(db, photo_id)
+        admin = _resolve_admin(authorization, db)
+        photo = photos.get_photo_admin(db, photo_id, admin.id)
     else:
         token = x_event_token or access
         if not token:
@@ -183,8 +190,8 @@ def get_photo_thumbnail(
 ):
     photo = None
     if authorization and authorization.startswith("Bearer "):
-        _resolve_admin(authorization, db)
-        photo = photos.get_photo_admin(db, photo_id)
+        admin = _resolve_admin(authorization, db)
+        photo = photos.get_photo_admin(db, photo_id, admin.id)
     else:
         token = x_event_token or access
         if not token:
@@ -204,6 +211,31 @@ def get_photo_thumbnail(
             "Referrer-Policy": "no-referrer",
             "X-Content-Type-Options": "nosniff",
         },
+    )
+
+
+@router.post("/admin/register", response_model=AdminLoginResponse, status_code=status.HTTP_201_CREATED)
+def admin_register(payload: AdminRegisterRequest, request: Request, db: Session = Depends(get_db)):
+    client_ip = request.client.host if request.client else "unknown"
+    enforce_login_rate_limit(client_ip)
+    email = payload.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Geçerli bir e-posta adresi girin.")
+    if db.query(AdminUser).filter(AdminUser.email == email).one_or_none():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Bu e-posta adresi zaten kayıtlı.")
+    display_name = payload.display_name.strip() if payload.display_name and payload.display_name.strip() else None
+    admin = AdminUser(
+        email=email,
+        password_hash=hash_password(payload.password),
+        display_name=display_name,
+    )
+    db.add(admin)
+    db.commit()
+    db.refresh(admin)
+    return AdminLoginResponse(
+        access_token=create_admin_token(admin.email),
+        email=admin.email,
+        display_name=admin.display_name,
     )
 
 
@@ -260,9 +292,14 @@ def admin_change_password(
 @router.get("/admin/events", response_model=list[EventAdmin])
 def admin_list_events(
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    events = db.query(Event).order_by(Event.created_at.desc()).all()
+    events = (
+        db.query(Event)
+        .filter(Event.admin_id == admin.id)
+        .order_by(Event.created_at.desc())
+        .all()
+    )
     return [event_to_admin(event) for event in events]
 
 
@@ -270,9 +307,9 @@ def admin_list_events(
 def admin_create_event(
     payload: EventCreateAdmin,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    event = create_event_admin(db, payload)
+    event = create_event_admin(db, payload, admin.id)
     return event_to_admin(event)
 
 
@@ -281,11 +318,9 @@ def admin_update_event(
     event_token: str,
     payload: EventUpdateAdmin,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    event = db.query(Event).filter(Event.private_token == event_token).one_or_none()
-    if not event:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Etkinlik bulunamadı.")
+    event = get_admin_event_or_404(db, event_token, admin.id)
     event = update_event_admin(db, event, payload)
     return event_to_admin(event)
 
@@ -294,11 +329,9 @@ def admin_update_event(
 def admin_delete_event(
     event_token: str,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
 ):
-    event = db.query(Event).filter(Event.private_token == event_token).one_or_none()
-    if not event:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Etkinlik bulunamadı.")
+    event = get_admin_event_or_404(db, event_token, admin.id)
     delete_event_admin(db, event)
 
 
@@ -306,12 +339,10 @@ def admin_delete_event(
 def admin_list_photos(
     event_token: str,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
     photos: PhotoService = Depends(get_photo_service),
 ):
-    event = db.query(Event).filter(Event.private_token == event_token).one_or_none()
-    if not event:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Etkinlik bulunamadı.")
+    event = get_admin_event_or_404(db, event_token, admin.id)
     items = photos.list_photos_for_event_admin(db, event.id)
     return [photo_public(item, event_token, admin=True) for item in items]
 
@@ -320,10 +351,10 @@ def admin_list_photos(
 def admin_delete_photo(
     photo_id: str,
     db: Session = Depends(get_db),
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
     photos: PhotoService = Depends(get_photo_service),
 ):
-    photos.delete_photo_admin(db, photo_id)
+    photos.delete_photo_admin(db, photo_id, admin.id)
 
 
 @router.patch("/admin/photos/{photo_id}", response_model=PhotoAdmin)
@@ -337,6 +368,7 @@ def admin_update_photo(
     photo = photos.update_photo_admin(
         db,
         photo_id,
+        admin_id=admin.id,
         favorite=payload.favorite,
         status_value=payload.status,
     )

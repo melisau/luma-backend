@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     admin_email: str = "admin@example.com"
     admin_password: str = "change-me-admin"
 
-    seed_event_name: str = "Melisa & Berk"
+    seed_event_name: str = "Örnek Etkinlik"
     seed_event_token: str | None = None
 
     public_base_url: str | None = None

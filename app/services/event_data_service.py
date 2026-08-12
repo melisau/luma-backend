@@ -213,8 +213,14 @@ def invitation_to_public(
 
 def update_invitation_admin(db: Session, event: Event, payload: InvitationUpdateAdmin) -> Event:
     data = payload.model_dump(exclude_unset=True)
+    text_fields = {"venue", "city", "tagline", "story_title", "story_text", "guest_note"}
     for key, value in data.items():
-        setattr(event, key, value)
+        if key in text_fields and isinstance(value, str):
+            setattr(event, key, value.strip())
+        elif key == "name" and isinstance(value, str):
+            event.name = value.strip()
+        else:
+            setattr(event, key, value)
     db.commit()
     db.refresh(event)
     return event

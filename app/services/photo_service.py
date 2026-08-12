@@ -271,9 +271,12 @@ class PhotoService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fotoğraf bulunamadı.")
         return photo
 
-    def get_photo_admin(self, db: Session, photo_id: str) -> Photo:
-        photo = db.query(Photo).filter(Photo.id == photo_id).one_or_none()
-        if not photo or photo.status == PhotoStatus.DELETED.value:
+    def get_photo_admin(self, db: Session, photo_id: str, admin_id: str | None = None) -> Photo:
+        query = db.query(Photo).filter(Photo.id == photo_id, Photo.status != PhotoStatus.DELETED.value)
+        if admin_id is not None:
+            query = query.join(Event).filter(Event.admin_id == admin_id)
+        photo = query.one_or_none()
+        if not photo:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fotoğraf bulunamadı.")
         return photo
 
@@ -291,8 +294,8 @@ class PhotoService:
             return None
         return self.storage.create_signed_url(key, self.settings.signed_url_expiry_seconds)
 
-    def delete_photo_admin(self, db: Session, photo_id: str) -> None:
-        photo = self.get_photo_admin(db, photo_id)
+    def delete_photo_admin(self, db: Session, photo_id: str, admin_id: str) -> None:
+        photo = self.get_photo_admin(db, photo_id, admin_id)
         try:
             self.storage.delete(photo.storage_key_original)
             if photo.storage_key_thumb:
@@ -302,8 +305,16 @@ class PhotoService:
         photo.status = PhotoStatus.DELETED.value
         db.commit()
 
-    def update_photo_admin(self, db: Session, photo_id: str, *, favorite: bool | None, status_value: str | None) -> Photo:
-        photo = self.get_photo_admin(db, photo_id)
+    def update_photo_admin(
+        self,
+        db: Session,
+        photo_id: str,
+        *,
+        admin_id: str,
+        favorite: bool | None,
+        status_value: str | None,
+    ) -> Photo:
+        photo = self.get_photo_admin(db, photo_id, admin_id)
         if favorite is not None:
             photo.favorite = favorite
         if status_value is not None:

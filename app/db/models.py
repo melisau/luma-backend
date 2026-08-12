@@ -46,12 +46,15 @@ class AdminUser(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     contacts: Mapped[list["Contact"]] = relationship(back_populates="admin", cascade="all, delete-orphan")
+    events: Mapped[list["Event"]] = relationship(back_populates="admin", cascade="all, delete-orphan")
 
 
 class Event(Base):
     __tablename__ = "events"
+    __table_args__ = (UniqueConstraint("admin_id", "slug", name="uq_admin_event_slug"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    admin_id: Mapped[str] = mapped_column(String(36), ForeignKey("admin_users.id"), index=True)
     name: Mapped[str] = mapped_column(String(255))
     slug: Mapped[str] = mapped_column(String(128), index=True)
     private_token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
@@ -79,6 +82,7 @@ class Event(Base):
     activities: Mapped[list["EventActivity"]] = relationship(
         back_populates="event", cascade="all, delete-orphan"
     )
+    admin: Mapped[AdminUser] = relationship(back_populates="events")
 
 
 class Guest(Base):
