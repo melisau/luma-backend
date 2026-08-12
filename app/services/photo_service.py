@@ -218,6 +218,17 @@ class PhotoService:
         db.commit()
         for photo in saved:
             db.refresh(photo)
+        if saved:
+            from app.services.activity_service import record_activity
+
+            count = len(saved)
+            name = uploader_name.strip()[:255]
+            record_activity(
+                db,
+                event,
+                f"{name}, {count} yeni fotoğraf yükledi",
+                "image",
+            )
         return saved
 
     def get_event_for_upload(self, db: Session, event_token: str) -> Event:
@@ -228,7 +239,7 @@ class PhotoService:
             db.query(Photo)
             .filter(
                 Photo.event_id == event.id,
-                Photo.status.in_([PhotoStatus.UPLOADED.value, PhotoStatus.APPROVED.value]),
+                Photo.status == PhotoStatus.APPROVED.value,
             )
             .order_by(Photo.created_at.desc())
             .all()
@@ -252,7 +263,7 @@ class PhotoService:
             .filter(
                 Photo.id == photo_id,
                 Photo.event_id == event.id,
-                Photo.status.in_([PhotoStatus.UPLOADED.value, PhotoStatus.APPROVED.value]),
+                Photo.status == PhotoStatus.APPROVED.value,
             )
             .one_or_none()
         )
@@ -296,6 +307,16 @@ class PhotoService:
         if favorite is not None:
             photo.favorite = favorite
         if status_value is not None:
+            allowed = {
+                PhotoStatus.UPLOADED.value,
+                PhotoStatus.APPROVED.value,
+                PhotoStatus.HIDDEN.value,
+            }
+            if status_value not in allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Geçersiz durum. uploaded, approved veya hidden kullanın.",
+                )
             photo.status = status_value
         db.commit()
         db.refresh(photo)

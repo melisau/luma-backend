@@ -1,0 +1,14 @@
+Generic single-database configuration.
+
+Run migrations from the backend directory:
+
+```bash
+cd backend
+PYTHONPATH=. alembic upgrade head
+```
+
+Create a new revision after model changes:
+
+```bash
+PYTHONPATH=. alembic revision -m "describe change"
+```

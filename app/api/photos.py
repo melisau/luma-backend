@@ -6,11 +6,13 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.security import create_admin_token, verify_password
+from app.core.security import create_admin_token, hash_password, verify_password
 from app.db.database import get_db
 from app.db.models import AdminUser, Event
-from app.schemas.event import EventAdmin, EventPublic
+from app.schemas.admin import AdminProfile, AdminProfileUpdate
+from app.schemas.event import EventAdmin, EventCreateAdmin, EventUpdateAdmin
 from app.schemas.photo import (
+    AdminChangePasswordRequest,
     AdminLoginRequest,
     AdminLoginResponse,
     PhotoAdmin,
@@ -19,6 +21,7 @@ from app.schemas.photo import (
     PhotoUploadResponse,
     SignedPhotoResponse,
 )
+from app.services.event_service import create_event_admin, delete_event_admin, event_to_admin, update_event_admin
 from app.services.photo_service import PhotoService
 from app.services.rate_limit import enforce_upload_rate_limit
 
@@ -209,7 +212,47 @@ def admin_login(payload: AdminLoginRequest, db: Session = Depends(get_db)):
     admin = db.query(AdminUser).filter(AdminUser.email == payload.email.lower()).one_or_none()
     if not admin or not verify_password(payload.password, admin.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geçersiz kimlik bilgileri.")
-    return AdminLoginResponse(access_token=create_admin_token(admin.email))
+    return AdminLoginResponse(
+        access_token=create_admin_token(admin.email),
+        email=admin.email,
+        display_name=admin.display_name,
+    )
+
+
+@router.get("/admin/me", response_model=AdminProfile)
+def admin_me(admin: AdminUser = Depends(get_current_admin)):
+    return AdminProfile.model_validate(admin)
+
+
+@router.patch("/admin/me", response_model=AdminProfile)
+def admin_update_me(
+    payload: AdminProfileUpdate,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    if "display_name" in payload.model_dump(exclude_unset=True):
+        name = payload.display_name
+        admin.display_name = name.strip() if name and name.strip() else None
+    db.commit()
+    db.refresh(admin)
+    return AdminProfile.model_validate(admin)
+
+
+@router.post("/admin/change-password", status_code=status.HTTP_204_NO_CONTENT)
+def admin_change_password(
+    payload: AdminChangePasswordRequest,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    if not verify_password(payload.current_password, admin.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mevcut şifre hatalı.")
+    if payload.current_password == payload.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Yeni şifre mevcut şifreden farklı olmalı.",
+        )
+    admin.password_hash = hash_password(payload.new_password)
+    db.commit()
 
 
 @router.get("/admin/events", response_model=list[EventAdmin])
@@ -218,18 +261,43 @@ def admin_list_events(
     _admin: AdminUser = Depends(get_current_admin),
 ):
     events = db.query(Event).order_by(Event.created_at.desc()).all()
-    return [
-        EventAdmin(
-            name=event.name,
-            slug=event.slug,
-            is_active=event.is_active,
-            uploads_enabled=event.uploads_enabled,
-            created_at=event.created_at,
-            private_token=event.private_token,
-            invite_path=f"/e/{event.private_token}",
-        )
-        for event in events
-    ]
+    return [event_to_admin(event) for event in events]
+
+
+@router.post("/admin/events", response_model=EventAdmin, status_code=status.HTTP_201_CREATED)
+def admin_create_event(
+    payload: EventCreateAdmin,
+    db: Session = Depends(get_db),
+    _admin: AdminUser = Depends(get_current_admin),
+):
+    event = create_event_admin(db, payload)
+    return event_to_admin(event)
+
+
+@router.patch("/admin/events/{event_token}", response_model=EventAdmin)
+def admin_update_event(
+    event_token: str,
+    payload: EventUpdateAdmin,
+    db: Session = Depends(get_db),
+    _admin: AdminUser = Depends(get_current_admin),
+):
+    event = db.query(Event).filter(Event.private_token == event_token).one_or_none()
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Etkinlik bulunamadı.")
+    event = update_event_admin(db, event, payload)
+    return event_to_admin(event)
+
+
+@router.delete("/admin/events/{event_token}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_event(
+    event_token: str,
+    db: Session = Depends(get_db),
+    _admin: AdminUser = Depends(get_current_admin),
+):
+    event = db.query(Event).filter(Event.private_token == event_token).one_or_none()
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Etkinlik bulunamadı.")
+    delete_event_admin(db, event)
 
 
 @router.get("/admin/events/{event_token}/photos", response_model=list[PhotoAdmin])

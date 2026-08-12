@@ -51,7 +51,8 @@ def upload_qr(
 
     buffer = BytesIO()
     img.save(buffer, format="PNG")
-    filename = "luma-fotograf-yukleme-qr-baski.png" if size == "print" else "luma-fotograf-yukleme-qr.png"
+    suffix = "baski" if size == "print" else "qr"
+    filename = f"luma-{event.slug}-fotograf-yukleme-{suffix}.png"
     disposition = "attachment" if download else "inline"
     return Response(
         content=buffer.getvalue(),

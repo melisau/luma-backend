@@ -1,34 +1,9 @@
 import io
-import os
-from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 from PIL import Image
 
-os.environ["DATABASE_URL"] = "sqlite:///:memory:"
-os.environ["STORAGE_BACKEND"] = "local"
-os.environ["LOCAL_STORAGE_PATH"] = str(Path(__file__).resolve().parent / "tmp_uploads")
-os.environ["SECRET_KEY"] = "test-secret-key"
-os.environ["ADMIN_EMAIL"] = "admin@test.com"
-os.environ["ADMIN_PASSWORD"] = "testpassword123"
-os.environ["SEED_EVENT_TOKEN"] = "event-a-token-123456789012345678901234"
-os.environ["UPLOADS_PER_MINUTE"] = "100"
-
-from app.core.config import get_settings
-from app.db.database import init_db
-from app.main import app
-
-get_settings.cache_clear()
-
-
-@pytest.fixture()
-def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCAL_STORAGE_PATH", str(tmp_path / "uploads"))
-    get_settings.cache_clear()
-    init_db()
-    with TestClient(app) as test_client:
-        yield test_client
+TOKEN = "event-a-token-123456789012345678901234"
 
 
 def make_image_bytes(fmt="JPEG", size=(800, 600)):
@@ -37,19 +12,10 @@ def make_image_bytes(fmt="JPEG", size=(800, 600)):
     return buffer.getvalue()
 
 
-def admin_headers(client):
-    response = client.post(
-        "/api/admin/login",
-        json={"email": "admin@test.com", "password": "testpassword123"},
-    )
-    token = response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
 def test_valid_image_upload(client):
     files = [("files", ("photo.jpg", make_image_bytes(), "image/jpeg"))]
     data = {"uploader_name": "Ayşe"}
-    response = client.post("/api/events/event-a-token-123456789012345678901234/photos", data=data, files=files)
+    response = client.post(f"/api/events/{TOKEN}/photos", data=data, files=files)
     assert response.status_code == 200
     assert len(response.json()["uploaded"]) == 1
 
@@ -57,7 +23,7 @@ def test_valid_image_upload(client):
 def test_invalid_mime(client):
     files = [("files", ("note.txt", b"hello", "text/plain"))]
     response = client.post(
-        "/api/events/event-a-token-123456789012345678901234/photos",
+        f"/api/events/{TOKEN}/photos",
         data={"uploader_name": "Ayşe"},
         files=files,
     )
@@ -67,7 +33,7 @@ def test_invalid_mime(client):
 def test_fake_jpg_extension(client):
     files = [("files", ("fake.jpg", b"not-an-image", "image/jpeg"))]
     response = client.post(
-        "/api/events/event-a-token-123456789012345678901234/photos",
+        f"/api/events/{TOKEN}/photos",
         data={"uploader_name": "Ayşe"},
         files=files,
     )
@@ -87,7 +53,7 @@ def test_nonexistent_event_token(client):
 def test_event_isolation(client):
     files = [("files", ("photo.jpg", make_image_bytes(), "image/jpeg"))]
     upload = client.post(
-        "/api/events/event-a-token-123456789012345678901234/photos",
+        f"/api/events/{TOKEN}/photos",
         data={"uploader_name": "Ayşe"},
         files=files,
     )
@@ -96,43 +62,54 @@ def test_event_isolation(client):
     assert wrong_token_response.status_code in {401, 404}
 
 
-def test_private_image_access_requires_token(client):
+def test_private_image_access_requires_token(client, admin_headers):
     files = [("files", ("photo.jpg", make_image_bytes(), "image/jpeg"))]
     upload = client.post(
-        "/api/events/event-a-token-123456789012345678901234/photos",
+        f"/api/events/{TOKEN}/photos",
         data={"uploader_name": "Ayşe"},
         files=files,
     )
     photo_id = upload.json()["uploaded"][0]["id"]
     denied = client.get(f"/api/photos/{photo_id}")
     assert denied.status_code == 401
-    allowed = client.get(
-        f"/api/photos/{photo_id}?access=event-a-token-123456789012345678901234"
+    pending = client.get(f"/api/photos/{photo_id}?access={TOKEN}")
+    assert pending.status_code == 404
+    client.patch(
+        f"/api/admin/photos/{photo_id}",
+        headers=admin_headers,
+        json={"status": "approved"},
     )
+    allowed = client.get(f"/api/photos/{photo_id}?access={TOKEN}")
     assert allowed.status_code == 200
     assert allowed.headers["content-type"].startswith("image/")
 
 
-def test_admin_can_access_without_guest_token(client):
+def test_admin_can_access_without_guest_token(client, admin_headers):
     files = [("files", ("photo.jpg", make_image_bytes(), "image/jpeg"))]
     upload = client.post(
-        "/api/events/event-a-token-123456789012345678901234/photos",
+        f"/api/events/{TOKEN}/photos",
         data={"uploader_name": "Ayşe"},
         files=files,
     )
     photo_id = upload.json()["uploaded"][0]["id"]
-    response = client.get(f"/api/photos/{photo_id}", headers=admin_headers(client))
+    response = client.get(f"/api/photos/{photo_id}", headers=admin_headers)
     assert response.status_code == 200
 
 
-def test_api_does_not_expose_storage_keys(client):
+def test_api_does_not_expose_storage_keys(client, admin_headers):
     files = [("files", ("photo.jpg", make_image_bytes(), "image/jpeg"))]
-    client.post(
-        "/api/events/event-a-token-123456789012345678901234/photos",
+    upload = client.post(
+        f"/api/events/{TOKEN}/photos",
         data={"uploader_name": "Ayşe"},
         files=files,
     )
-    listing = client.get("/api/events/event-a-token-123456789012345678901234/photos")
+    photo_id = upload.json()["uploaded"][0]["id"]
+    client.patch(
+        f"/api/admin/photos/{photo_id}",
+        headers=admin_headers,
+        json={"status": "approved"},
+    )
+    listing = client.get(f"/api/events/{TOKEN}/photos")
     payload = listing.json()[0]
     assert "storage_key" not in payload
     assert "bucket" not in payload

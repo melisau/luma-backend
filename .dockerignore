@@ -1,0 +1,14 @@
+__pycache__
+*.py[cod]
+.venv
+venv
+.env
+.env.*
+!.env.example
+planner.db
+private_uploads
+uploads
+.pytest_cache
+.git
+tests
+*.md
