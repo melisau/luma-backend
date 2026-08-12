@@ -1,9 +1,9 @@
-# Yerel geliştirme (SQLite):
+# Local development (SQLite):
 #   cp .env.example .env && docker compose up --build
 #
-# PostgreSQL ile:
+# With PostgreSQL:
 #   cp .env.example .env
-#   # .env içinde DATABASE_URL=postgresql+psycopg2://luma:luma@db:5432/luma
+#   # Set DATABASE_URL=postgresql+psycopg2://luma:luma@db:5432/luma in .env
 #   docker compose --profile postgres up --build
 
 services:
