@@ -28,7 +28,6 @@ from app.services.event_data_service import (
     delete_contact,
     delete_guest_admin,
     delete_message_admin,
-    get_event_or_404,
     invitation_to_public,
     list_contacts,
     list_guests,
@@ -80,7 +79,7 @@ def get_public_invitation(
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_event_by_token(db, event_token)
     return _invitation_public(event, event_token, covers, music)
 
 
@@ -90,7 +89,7 @@ def get_public_cover(
     db: Session = Depends(get_db),
     covers: InvitationCoverService = Depends(get_cover_service),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_event_by_token(db, event_token)
     data, content_type = covers.stream_cover(event)
     return Response(
         content=data,
@@ -105,7 +104,7 @@ def get_public_music(
     db: Session = Depends(get_db),
     music: InvitationMusicService = Depends(get_music_service),
 ):
-    event = get_event_or_404(db, event_token)
+    event = get_event_by_token(db, event_token)
     data, content_type = music.stream_music(event)
     return Response(
         content=data,

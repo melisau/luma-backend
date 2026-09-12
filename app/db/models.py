@@ -94,6 +94,8 @@ class Guest(Base):
     email: Mapped[str] = mapped_column(String(255), index=True)
     status: Mapped[str] = mapped_column(String(32), default=GuestStatus.PENDING.value, index=True)
     people: Mapped[int] = mapped_column(Integer, default=1)
+    dietary_requirements: Mapped[str] = mapped_column(Text, default="", server_default="")
+    notes: Mapped[str] = mapped_column(Text, default="", server_default="")
     source: Mapped[str] = mapped_column(String(32), default=GuestSource.ADMIN.value)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

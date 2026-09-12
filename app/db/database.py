@@ -46,6 +46,12 @@ def migrate_db() -> None:
             if "display_name" not in admin_columns:
                 connection.execute(text("ALTER TABLE admin_users ADD COLUMN display_name VARCHAR(255)"))
 
+        if inspector.has_table("guests"):
+            columns = {column["name"] for column in inspector.get_columns("guests")}
+            for name in ("dietary_requirements", "notes"):
+                if name not in columns:
+                    connection.execute(text(f"ALTER TABLE guests ADD COLUMN {name} TEXT NOT NULL DEFAULT ''"))
+
         if not inspector.has_table("events"):
             return
         existing = {column["name"] for column in inspector.get_columns("events")}

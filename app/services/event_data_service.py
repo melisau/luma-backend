@@ -45,6 +45,8 @@ def create_guest_admin(db: Session, event: Event, payload: GuestCreateAdmin) -> 
         email=email,
         status=payload.status,
         people=payload.people,
+        dietary_requirements=payload.dietary_requirements,
+        notes=payload.notes,
         source=payload.source,
     )
     db.add(guest)
@@ -74,6 +76,9 @@ def update_guest_admin(db: Session, event: Event, guest_id: str, payload: GuestU
         guest.status = payload.status
     if payload.people is not None:
         guest.people = payload.people
+    for field in ("dietary_requirements", "notes"):
+        if getattr(payload, field) is not None:
+            setattr(guest, field, getattr(payload, field))
     db.commit()
     db.refresh(guest)
     return guest
@@ -102,6 +107,8 @@ def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> Guest:
         guest.name = payload.name.strip()
         guest.status = payload.status
         guest.people = payload.people
+        guest.dietary_requirements = payload.dietary_requirements
+        guest.notes = payload.notes
         guest.responded_at = now
     else:
         guest = Guest(
@@ -110,6 +117,8 @@ def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> Guest:
             email=email,
             status=payload.status,
             people=payload.people,
+            dietary_requirements=payload.dietary_requirements,
+            notes=payload.notes,
             source=GuestSource.EXTERNAL.value,
             responded_at=now,
         )

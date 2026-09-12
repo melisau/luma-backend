@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     public_base_url: str | None = None
 
     serve_frontend: bool = True
-    frontend_path: Path = ROOT.parent / "frontend"
+    frontend_path: Path = ROOT.parent / "luma-frontend"
 
     @property
     def resolved_frontend_path(self) -> Path | None:

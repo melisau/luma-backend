@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, EmailStr
 
 
 GuestStatusLiteral = Literal["attending", "declined", "pending"]
@@ -18,30 +18,42 @@ class GuestPublic(BaseModel):
     status: GuestStatusLiteral
     people: int
     source: GuestSourceLiteral
+    dietary_requirements: str = ""
+    notes: str = ""
     created_at: datetime
     responded_at: datetime | None = None
 
 
-class GuestCreateAdmin(BaseModel):
+class GuestInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+
+class GuestCreateAdmin(GuestInput):
     name: str = Field(min_length=1, max_length=255)
-    email: str = Field(min_length=3, max_length=255)
+    email: EmailStr = Field(max_length=255)
     status: GuestStatusLiteral = "pending"
     people: int = Field(default=1, ge=1, le=20)
+    dietary_requirements: str = Field(default="", max_length=1000)
+    notes: str = Field(default="", max_length=2000)
     source: GuestSourceLiteral = "admin"
 
 
-class GuestUpdateAdmin(BaseModel):
+class GuestUpdateAdmin(GuestInput):
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    email: str | None = Field(default=None, min_length=3, max_length=255)
+    email: EmailStr | None = Field(default=None, max_length=255)
     status: GuestStatusLiteral | None = None
     people: int | None = Field(default=None, ge=1, le=20)
+    dietary_requirements: str | None = Field(default=None, max_length=1000)
+    notes: str | None = Field(default=None, max_length=2000)
 
 
-class RsvpSubmit(BaseModel):
+class RsvpSubmit(GuestInput):
     name: str = Field(min_length=1, max_length=255)
-    email: str = Field(min_length=3, max_length=255)
+    email: EmailStr = Field(max_length=255)
     status: GuestStatusLiteral
     people: int = Field(default=1, ge=1, le=20)
+    dietary_requirements: str = Field(default="", max_length=1000)
+    notes: str = Field(default="", max_length=2000)
 
 
 class GuestbookMessagePublic(BaseModel):
