@@ -37,6 +37,7 @@ class PhotoAdmin(BaseModel):
 
 
 class PhotoUploadResponse(BaseModel):
+    duplicates_skipped: int = 0
     uploaded: list[PhotoPublic]
 
 

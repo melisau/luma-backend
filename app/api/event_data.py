@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
-from fastapi.responses import Response
+from fastapi.responses import Response, JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.photos import get_current_admin, get_event_by_token
@@ -18,6 +18,7 @@ from app.schemas.guest import (
     GuestbookMessagePublic,
     GuestbookMessageUpdateAdmin,
     RsvpSubmit,
+    RsvpReceipt,
 )
 from app.schemas.invitation import InvitationPublic, InvitationUpdateAdmin
 from app.services.activity_service import list_activities, record_activity
@@ -37,7 +38,7 @@ from app.services.event_data_service import (
     update_invitation_admin,
     update_message_admin,
 )
-from app.services.rate_limit import enforce_message_rate_limit
+from app.services.rate_limit import enforce_message_rate_limit, enforce_rsvp_rate_limit
 from app.services.invitation_cover_service import InvitationCoverService
 from app.services.invitation_music_service import InvitationMusicService
 
@@ -113,15 +114,19 @@ def get_public_music(
     )
 
 
-@router.post("/events/{event_token}/rsvp", response_model=GuestPublic)
+@router.post("/events/{event_token}/rsvp", response_model=RsvpReceipt)
 def public_rsvp(
     event_token: str,
     payload: RsvpSubmit,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     event = get_event_by_token(db, event_token)
-    guest = submit_rsvp(db, event, payload)
-    return GuestPublic.model_validate(guest)
+    enforce_rsvp_rate_limit(request.client.host if request.client else "unknown", event_token)
+    response.headers["Cache-Control"] = "no-store"
+    guest, edit_token = submit_rsvp(db, event, payload)
+    return RsvpReceipt(**GuestPublic.model_validate(guest).model_dump(), edit_token=edit_token)
 
 
 @router.get("/events/{event_token}/messages", response_model=list[GuestbookMessagePublic])
@@ -360,3 +365,38 @@ def admin_delete_contact(
     admin: AdminUser = Depends(get_current_admin),
 ):
     delete_contact(db, admin.id, contact_id)
+
+
+@router.get("/admin/events/{event_token}/guests.csv")
+def export_guests_csv(event_token: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    import csv
+    from io import StringIO
+    event = get_admin_event_or_404(db, event_token, admin.id)
+    output = StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["Ad Soyad", "E-posta", "Durum", "Kişi Sayısı", "Beslenme", "Not", "Yanıt Zamanı"])
+    def safe(value):
+        value = str(value or "")
+        return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) or value.startswith(("\t", "\r", "\n")) else value
+    labels = {"attending": "Katılacak", "declined": "Katılmayacak", "pending": "Bekleniyor"}
+    for guest in list_guests(db, event):
+        writer.writerow([safe(guest.name), safe(guest.email), labels[guest.status], guest.people,
+                         safe(guest.dietary_requirements), safe(guest.notes),
+                         guest.responded_at.isoformat() if guest.responded_at else ""])
+    return Response(content=("\ufeff" + output.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="luma-guests.csv"', "Cache-Control": "private, no-store"})
+
+
+@router.post("/admin/events/{event_token}/guests/{guest_id}/rsvp-link")
+def issue_rsvp_link(event_token: str, guest_id: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    import hashlib
+    import secrets
+    from app.db.models import Guest
+    event = get_admin_event_or_404(db, event_token, admin.id)
+    guest = db.query(Guest).filter(Guest.event_id == event.id, Guest.id == guest_id).one_or_none()
+    if not guest:
+        raise HTTPException(status_code=404, detail="Misafir bulunamadı.")
+    token = secrets.token_urlsafe(32)
+    guest.rsvp_token_hash = hashlib.sha256(token.encode()).hexdigest()
+    db.commit()
+    return JSONResponse({"edit_token": token}, headers={"Cache-Control": "no-store"})

@@ -207,3 +207,19 @@ GitHub Actions (`.github/workflows/ci.yml`):
 - Activity feed (admin panel)
 - Admin profile and display name (`display_name`)
 - Login, upload, and message rate limiting
+
+## RSVP and invitation reliability
+
+- `RSVPS_PER_MINUTE` defaults to 20 per client IP and event. The limiter is in-memory; multiple workers require shared storage.
+- Authenticated event owners can export `GET /api/admin/events/{token}/guests.csv`. UTF-8 BOM supports Turkish Excel imports; formula-like values are escaped.
+- Invitation PATCH supports `address`, `transport_notes`, `contact_info`, and `schedule`; migration `0008` preserves existing event data.
+- Event timestamps are normalized to UTC; the editor displays local time.
+- Startup migrations use the application database connection and abort startup on migration failures.
+
+## Private RSVP links and album exports
+
+RSVP POST returns an `edit_token` on the first submission. Updates require that token in the request body. Pre-invited and legacy guests require a personal link issued by the event owner through `POST /api/admin/events/{event_token}/guests/{guest_id}/rsvp-link`. Issuing a link revokes its predecessor. Only SHA-256 token hashes are stored; guest lists and CSV exports contain no credentials. This is possession-based editing authorization, not email verification. The browser retains credentials locally and displays a private recovery link using a URL fragment.
+
+Owners can download `GET /api/admin/events/{event_token}/album.zip`, including pending/approved/hidden photos, excluding deleted photos. Exports are limited to 200 MB and fail if any file is unavailable.
+
+New photo uploads are oriented using EXIF, resized to `MAX_PHOTO_DIMENSION` (4096 by default), and compressed. The processed copy is retained, not the untouched original. Exact processed-content duplicates within an event are skipped and reported as `duplicates_skipped`. Legacy photos without a hash are not retroactively deduplicated. Deleted photos may be uploaded again. Duplicate checks do not detect visually similar photos with different encoding/content.

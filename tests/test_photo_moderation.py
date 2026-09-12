@@ -12,7 +12,7 @@ def make_image_bytes(fmt="JPEG", size=(800, 600)):
 
 
 def upload_photo(client, name="Ayşe"):
-    files = [("files", ("photo.jpg", make_image_bytes(), "image/jpeg"))]
+    files = [("files", ("photo.jpg", make_image_bytes(size=(800+sum(name.encode()),600)), "image/jpeg"))]
     response = client.post(
         f"/api/events/{TOKEN}/photos",
         data={"uploader_name": name},

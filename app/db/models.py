@@ -50,6 +50,8 @@ class AdminUser(Base):
 
 
 class Event(Base):
+    access_code_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    album_public: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     __tablename__ = "events"
     __table_args__ = (UniqueConstraint("admin_id", "slug", name="uq_admin_event_slug"),)
 
@@ -71,6 +73,10 @@ class Event(Base):
     envelope_texture: Mapped[str] = mapped_column(String(20), default="linen", server_default="linen")
     envelope_pattern: Mapped[str] = mapped_column(String(20), default="plain", server_default="plain")
     seal_motif: Mapped[str] = mapped_column(String(20), default="botanical", server_default="botanical")
+    address: Mapped[str] = mapped_column(Text, default="", server_default="")
+    transport_notes: Mapped[str] = mapped_column(Text, default="", server_default="")
+    contact_info: Mapped[str] = mapped_column(Text, default="", server_default="")
+    schedule: Mapped[str] = mapped_column(Text, default="", server_default="")
     opening_style: Mapped[str] = mapped_column(String(32), default="classic", server_default="classic")
     tagline: Mapped[str] = mapped_column(String(512), default="")
     story_title: Mapped[str] = mapped_column(String(512), default="")
@@ -93,6 +99,7 @@ class Event(Base):
 
 
 class Guest(Base):
+    rsvp_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     __tablename__ = "guests"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -140,6 +147,8 @@ class Contact(Base):
 
 
 class Photo(Base):
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    __table_args__ = (UniqueConstraint("event_id", "content_hash", name="uq_event_photo_hash"),)
     __tablename__ = "photos"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

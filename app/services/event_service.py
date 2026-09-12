@@ -45,6 +45,8 @@ def event_to_admin(event: Event):
     from app.schemas.event import EventAdmin
 
     return EventAdmin(
+        album_public=event.album_public,
+        access_code_enabled=bool(event.access_code_hash),
         name=event.name,
         slug=event.slug,
         is_active=event.is_active,
@@ -84,6 +86,12 @@ def create_event_admin(db: Session, payload: EventCreateAdmin, admin_id: str) ->
 
 def update_event_admin(db: Session, event: Event, payload: EventUpdateAdmin) -> Event:
     data = payload.model_dump(exclude_unset=True)
+    code = data.pop("access_code", None)
+    if code is not None:
+        from app.core.security import hash_password
+        event.access_code_hash = hash_password(code) if code else None
+    if data.get("album_public", True) is None:
+        data.pop("album_public")
     if "slug" in data and data["slug"]:
         candidate = slugify_name(data["slug"])
         conflict = (

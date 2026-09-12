@@ -47,7 +47,12 @@ class GuestUpdateAdmin(GuestInput):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+class RsvpReceipt(GuestPublic):
+    edit_token: str
+
+
 class RsvpSubmit(GuestInput):
+    edit_token: str | None = Field(default=None, min_length=32, max_length=128)
     name: str = Field(min_length=1, max_length=255)
     email: EmailStr = Field(max_length=255)
     status: GuestStatusLiteral

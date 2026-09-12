@@ -1,3 +1,6 @@
+from sqlalchemy.exc import IntegrityError
+import hashlib
+import secrets
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
@@ -92,7 +95,7 @@ def delete_guest_admin(db: Session, event: Event, guest_id: str) -> None:
     db.commit()
 
 
-def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> Guest:
+def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> tuple[Guest, str]:
     if not event.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu etkinlik artık aktif değil.")
     email = normalize_email(payload.email)
@@ -101,6 +104,14 @@ def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> Guest:
         .filter(Guest.event_id == event.id, Guest.email == email)
         .one_or_none()
     )
+    edit_token = payload.edit_token
+    if guest:
+        if not edit_token or not guest.rsvp_token_hash or not secrets.compare_digest(guest.rsvp_token_hash, hashlib.sha256(edit_token.encode()).hexdigest()):
+            raise HTTPException(status_code=403, detail="Bu yanıt için kişisel RSVP bağlantınızı kullanın veya etkinlik sahibinden yeni bağlantı isteyin.")
+    elif edit_token:
+        raise HTTPException(status_code=403, detail="Kişisel bağlantı bu e-posta ile eşleşmiyor. Davet edilen e-posta adresini kullanın.")
+    else:
+        edit_token = secrets.token_urlsafe(32)
     now = utc_now()
     created = guest is None
     if guest:
@@ -113,6 +124,7 @@ def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> Guest:
     else:
         guest = Guest(
             event_id=event.id,
+            rsvp_token_hash=hashlib.sha256(edit_token.encode()).hexdigest(),
             name=payload.name.strip(),
             email=email,
             status=payload.status,
@@ -123,7 +135,11 @@ def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> Guest:
             responded_at=now,
         )
         db.add(guest)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Bu e-posta için yanıt kaydedilmiş. Kişisel bağlantınızı kullanın.") from None
     db.refresh(guest)
     status_label = STATUS_LABELS.get(payload.status, payload.status)
     if created:
@@ -131,7 +147,7 @@ def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> Guest:
     else:
         text = f"{guest.name} katılım durumunu “{status_label}” olarak güncelledi"
     record_activity(db, event, text, "check")
-    return guest
+    return guest, edit_token
 
 
 def list_messages(db: Session, event: Event, *, approved_only: bool = False) -> list[GuestbookMessage]:
@@ -215,6 +231,11 @@ def invitation_to_public(
         story_text=event.story_text or "",
         guest_note=event.guest_note or "",
         opening_style=event.opening_style,
+        address=event.address,
+        transport_notes=event.transport_notes,
+        contact_info=event.contact_info,
+        schedule=event.schedule,
+
         envelope_color=event.envelope_color,
         seal_color=event.seal_color,
         paper_color=event.paper_color,

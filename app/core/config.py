@@ -26,12 +26,14 @@ class Settings(BaseSettings):
     storage_secret_access_key: str | None = None
     storage_region: str = "auto"
 
+    max_photo_dimension: int = 4096
     max_photo_size_mb: int = 15
     max_photos_per_event: int = 500
     uploads_enabled: bool = True
     uploads_per_minute: int = 10
     logins_per_minute: int = 10
     messages_per_minute: int = 20
+    rsvps_per_minute: int = 20
     signed_url_expiry_seconds: int = 300
 
     frontend_origins: str = "http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:8000,http://localhost:8000"

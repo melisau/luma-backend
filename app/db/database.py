@@ -24,6 +24,11 @@ def get_db() -> Generator[Session, None, None]:
 
 
 EVENT_COLUMN_MIGRATIONS: dict[str, str] = {
+    "address": "TEXT NOT NULL DEFAULT ''",
+    "transport_notes": "TEXT NOT NULL DEFAULT ''",
+    "contact_info": "TEXT NOT NULL DEFAULT ''",
+    "schedule": "TEXT NOT NULL DEFAULT ''",
+
     "envelope_color": "VARCHAR(20) NOT NULL DEFAULT '#e9dcc4'",
     "seal_color": "VARCHAR(20) NOT NULL DEFAULT '#873f43'",
     "paper_color": "VARCHAR(20) NOT NULL DEFAULT '#fffdf7'",
@@ -94,16 +99,14 @@ def migrate_db() -> None:
 
 
 def run_alembic_migrations() -> None:
-    try:
-        from alembic import command
-        from alembic.config import Config
+    from alembic import command
+    from alembic.config import Config
 
-        alembic_cfg = Config(str(ROOT / "alembic.ini"))
-        alembic_cfg.set_main_option("script_location", str(ROOT / "alembic"))
-        alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
+    alembic_cfg = Config(str(ROOT / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(ROOT / "alembic"))
+    with engine.begin() as connection:
+        alembic_cfg.attributes["connection"] = connection
         command.upgrade(alembic_cfg, "head")
-    except Exception:
-        migrate_db()
 
 
 def init_db() -> None:

@@ -1,10 +1,11 @@
+from app.schemas.dates import EventDateModel
 from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class InvitationPublic(BaseModel):
+class InvitationPublic(EventDateModel):
     model_config = ConfigDict(from_attributes=True)
 
     envelope_color: str = Field(default="#e9dcc4", pattern=r"^#[0-9a-fA-F]{6}$")
@@ -13,6 +14,10 @@ class InvitationPublic(BaseModel):
     envelope_texture: Literal["smooth", "linen", "grain"] = "linen"
     envelope_pattern: Literal["plain", "pinstripe", "botanical", "lace", "floral_cut", "embossed"] = "plain"
     seal_motif: Literal["botanical", "heart", "monogram"] = "botanical"
+    address: str = Field(default="", max_length=1000)
+    transport_notes: str = Field(default="", max_length=2000)
+    contact_info: str = Field(default="", max_length=1000)
+    schedule: str = Field(default="", max_length=3000)
     opening_style: Literal["classic", "envelope"] = "classic"
     name: str
     slug: str
@@ -28,13 +33,17 @@ class InvitationPublic(BaseModel):
     music_filename: str | None = None
 
 
-class InvitationUpdateAdmin(BaseModel):
+class InvitationUpdateAdmin(EventDateModel):
     envelope_color: str = Field(default="#e9dcc4", pattern=r"^#[0-9a-fA-F]{6}$")
     seal_color: str = Field(default="#873f43", pattern=r"^#[0-9a-fA-F]{6}$")
     paper_color: str = Field(default="#fffdf7", pattern=r"^#[0-9a-fA-F]{6}$")
     envelope_texture: Literal["smooth", "linen", "grain"] = "linen"
     envelope_pattern: Literal["plain", "pinstripe", "botanical", "lace", "floral_cut", "embossed"] = "plain"
     seal_motif: Literal["botanical", "heart", "monogram"] = "botanical"
+    address: str = Field(default="", max_length=1000)
+    transport_notes: str = Field(default="", max_length=2000)
+    contact_info: str = Field(default="", max_length=1000)
+    schedule: str = Field(default="", max_length=3000)
     opening_style: Literal["classic", "envelope"] = "classic"
     name: str | None = Field(default=None, max_length=255)
     event_date: datetime | None = None

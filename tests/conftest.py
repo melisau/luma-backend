@@ -69,12 +69,18 @@ def client(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def reset_rate_limiters():
-    from app.services.rate_limit import login_rate_limiter, message_rate_limiter, upload_rate_limiter
+    from app.services.rate_limit import login_rate_limiter, message_rate_limiter, upload_rate_limiter, rsvp_rate_limiter
 
+    from app.api.event_access import access_limiter
+    access_limiter._events.clear()
+    rsvp_rate_limiter._events.clear()
     login_rate_limiter._events.clear()
     message_rate_limiter._events.clear()
     upload_rate_limiter._events.clear()
     yield
+    from app.api.event_access import access_limiter
+    access_limiter._events.clear()
+    rsvp_rate_limiter._events.clear()
     login_rate_limiter._events.clear()
     message_rate_limiter._events.clear()
     upload_rate_limiter._events.clear()

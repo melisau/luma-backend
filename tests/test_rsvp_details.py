@@ -17,7 +17,7 @@ def test_invitation_rsvp_admin_details(client, admin_headers):
     guest = next(g for g in guests if g['id'] == guest_id)
     assert (guest['name'], guest['people'], guest['dietary_requirements'], guest['notes']) == ('Deniz', 7, 'Glutensiz', 'Servis kullanacağım')
     assert client.get(f'/api/admin/events/{TOKEN}/guests').status_code == 401
-    payload.update(people=3, notes='Servis gerekmiyor')
+    payload.update(people=3, notes='Servis gerekmiyor', edit_token=response.json()['edit_token'])
     updated = client.post(f'/api/events/{TOKEN}/rsvp', json=payload)
     assert updated.json()['id'] == guest_id
     assert updated.json()['people'] == 3

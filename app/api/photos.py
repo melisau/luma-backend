@@ -140,7 +140,7 @@ async def upload_event_photos(
             detail="Fotoğraf yüklenirken bir hata oluştu. Lütfen tekrar deneyin.",
         ) from None
 
-    return PhotoUploadResponse(uploaded=[photo_public(item, event_token) for item in saved])
+    return PhotoUploadResponse(uploaded=[photo_public(item, event_token) for item in saved], duplicates_skipped=len(files)-len(saved))
 
 
 
@@ -162,7 +162,7 @@ def get_photo(
         if not token:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Erişim reddedildi.")
         photo = photos.get_photo_for_event(db, photo_id, token)
-    signed = photos.signed_access_url(photo, thumbnail=False)
+    signed = photos.signed_access_url(photo, thumbnail=False) if authorization else None
     if signed:
         return SignedPhotoResponse(url=signed, expires_in=get_settings().signed_url_expiry_seconds)
 
@@ -197,7 +197,7 @@ def get_photo_thumbnail(
         if not token:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Erişim reddedildi.")
         photo = photos.get_photo_for_event(db, photo_id, token)
-    signed = photos.signed_access_url(photo, thumbnail=True)
+    signed = photos.signed_access_url(photo, thumbnail=True) if authorization else None
     if signed:
         return SignedPhotoResponse(url=signed, expires_in=get_settings().signed_url_expiry_seconds)
 
@@ -374,3 +374,44 @@ def admin_update_photo(
     )
     event = db.query(Event).filter(Event.id == photo.event_id).one()
     return photo_public(photo, event.private_token, admin=True)
+
+
+@router.get("/admin/events/{event_token}/album.zip")
+def download_album(event_token: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin), photos: PhotoService = Depends(get_photo_service)):
+    import tempfile
+    import zipfile
+    from fastapi.responses import StreamingResponse
+    from starlette.background import BackgroundTask
+    event = get_admin_event_or_404(db, event_token, admin.id)
+    items = photos.list_photos_for_event_admin(db, event.id)
+    if not items:
+        raise HTTPException(status_code=404, detail="İndirilecek fotoğraf yok.")
+    limit = 200 * 1024 * 1024
+    if sum(photo.size for photo in items) > limit:
+        raise HTTPException(status_code=413, detail="Albüm 200 MB sınırını aşıyor. Fotoğrafları tek tek indirin.")
+    archive = tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024, mode='w+b')
+    try:
+        total = 0
+        with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_STORED) as bundle:
+            for photo in items:
+                data, mime = photos.stream_photo(photo)
+                total += len(data)
+                if total > limit:
+                    raise HTTPException(status_code=413, detail="Albüm 200 MB sınırını aşıyor.")
+                extension = {'image/jpeg':'.jpg','image/png':'.png','image/webp':'.webp'}.get(mime,'.bin')
+                bundle.writestr(f'{photo.id}{extension}', data)
+        archive.seek(0)
+    except HTTPException:
+        archive.close()
+        raise
+    except Exception:
+        archive.close()
+        logger.exception('Album export failed')
+        raise HTTPException(status_code=503, detail="Albümün bazı dosyalarına erişilemiyor. Lütfen tekrar deneyin.") from None
+    def chunks():
+        try:
+            while chunk := archive.read(64 * 1024):
+                yield chunk
+        finally:
+            archive.close()
+    return StreamingResponse(chunks(), media_type='application/zip', headers={'Content-Disposition':'attachment; filename="luma-album.zip"','Cache-Control':'private, no-store'}, background=BackgroundTask(archive.close))

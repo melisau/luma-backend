@@ -47,3 +47,12 @@ def enforce_message_rate_limit(client_ip: str, event_token: str) -> None:
     settings = get_settings()
     message_rate_limiter.check(f"msg-ip:{client_ip}", settings.messages_per_minute)
     message_rate_limiter.check(f"msg-event:{event_token}", settings.messages_per_minute * 2)
+
+
+rsvp_rate_limiter = RateLimiter()
+
+def enforce_rsvp_rate_limit(client_ip: str, event_token: str) -> None:
+    rsvp_rate_limiter.check(
+        f"rsvp:{event_token}:{client_ip}", get_settings().rsvps_per_minute,
+        detail="Çok fazla katılım yanıtı gönderildi. Lütfen bir dakika sonra tekrar deneyin.",
+    )

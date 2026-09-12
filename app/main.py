@@ -1,8 +1,9 @@
+from app.api.event_access import router as access_router, require_event_access
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -97,9 +98,11 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Event-Token"],
 )
 
-app.include_router(events_router, prefix="/api")
-app.include_router(photos_router, prefix="/api")
-app.include_router(event_data_router, prefix="/api")
+app.include_router(events_router, prefix="/api", dependencies=[Depends(require_event_access)])
+app.include_router(photos_router, prefix="/api", dependencies=[Depends(require_event_access)])
+app.include_router(event_data_router, prefix="/api", dependencies=[Depends(require_event_access)])
+
+app.include_router(access_router, prefix="/api")
 
 frontend_dir = settings.resolved_frontend_path
 if frontend_dir:

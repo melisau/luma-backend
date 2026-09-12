@@ -1,11 +1,13 @@
+import hashlib
 import io
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
 from app.db.models import Event, Photo, PhotoStatus
@@ -142,7 +144,10 @@ class PhotoService:
 
         content_type = self._resolve_content_type(upload, raw)
         image = self._open_image(raw)
+        image = ImageOps.exif_transpose(image)
         image, save_format, mime_type = self._normalize_output(image, content_type)
+        dimension = max(400, self.settings.max_photo_dimension)
+        image.thumbnail((dimension, dimension), Image.Resampling.LANCZOS)
 
         width, height = image.size
         original_buffer = io.BytesIO()
@@ -180,42 +185,61 @@ class PhotoService:
     ) -> list[Photo]:
         event = self._validate_event(db, event_token)
         current_count = self._count_event_photos(db, event.id)
-        if current_count + len(files) > self.settings.max_photos_per_event:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Bu etkinlik için fotoğraf limiti doldu.",
-            )
-
-        saved: list[Photo] = []
+        prepared = []
+        seen = set()
         for upload in files:
-            raw = upload.file.read()
+            raw = upload.file.read(self.settings.max_photo_size_bytes + 1)
             processed = self._process_image(upload, raw)
-            photo_id = str(uuid.uuid4())
-            ext = ALLOWED_MIME.get(processed.mime_type, ".jpg")
-            original_key = f"events/{event.id}/photos/original/{photo_id}{ext}"
-            thumb_key = f"events/{event.id}/photos/thumb/{photo_id}.jpg"
+            digest = hashlib.sha256(processed.original_bytes).hexdigest()
+            existing = db.query(Photo.id).filter(Photo.event_id == event.id, Photo.content_hash == digest).first()
+            if digest in seen or existing:
+                continue
+            seen.add(digest)
+            prepared.append((upload, processed, digest))
+        if current_count + len(prepared) > self.settings.max_photos_per_event:
+            raise HTTPException(status_code=403, detail="Bu etkinlik için fotoğraf limiti doldu.")
+        saved: list[Photo] = []
+        written_keys = []
+        try:
+            for upload, processed, digest in prepared:
+                photo_id = str(uuid.uuid4())
+                ext = ALLOWED_MIME.get(processed.mime_type, ".jpg")
+                original_key = f"events/{event.id}/photos/original/{photo_id}{ext}"
+                thumb_key = f"events/{event.id}/photos/thumb/{photo_id}.jpg"
 
-            self.storage.put_bytes(original_key, processed.original_bytes, processed.mime_type)
-            self.storage.put_bytes(thumb_key, processed.thumb_bytes, "image/jpeg")
+                written_keys.extend([original_key, thumb_key])
+                self.storage.put_bytes(original_key, processed.original_bytes, processed.mime_type)
+                self.storage.put_bytes(thumb_key, processed.thumb_bytes, "image/jpeg")
 
-            photo = Photo(
-                id=photo_id,
-                event_id=event.id,
-                storage_key_original=original_key,
-                storage_key_thumb=thumb_key,
-                original_filename=upload.filename,
-                mime_type=processed.mime_type,
-                size=processed.size,
-                width=processed.width,
-                height=processed.height,
-                uploader_name=uploader_name.strip()[:255],
-                caption=caption.strip(),
-                status=PhotoStatus.UPLOADED.value,
-            )
-            db.add(photo)
-            saved.append(photo)
+                photo = Photo(
+                    id=photo_id,
+                    event_id=event.id,
+                    content_hash=digest,
+                    storage_key_original=original_key,
+                    storage_key_thumb=thumb_key,
+                    original_filename=upload.filename,
+                    mime_type=processed.mime_type,
+                    size=processed.size,
+                    width=processed.width,
+                    height=processed.height,
+                    uploader_name=uploader_name.strip()[:255],
+                    caption=caption.strip(),
+                    status=PhotoStatus.UPLOADED.value,
+                )
+                db.add(photo)
+                saved.append(photo)
 
-        db.commit()
+            db.commit()
+        except Exception as error:
+            db.rollback()
+            for key in written_keys:
+                try:
+                    self.storage.delete(key)
+                except Exception:
+                    pass
+            if isinstance(error, IntegrityError):
+                raise HTTPException(status_code=409, detail="Aynı fotoğraf eşzamanlı yüklendi. Lütfen yeniden deneyin.") from error
+            raise
         for photo in saved:
             db.refresh(photo)
         if saved:
@@ -235,6 +259,8 @@ class PhotoService:
         return self._validate_event(db, event_token)
 
     def list_photos_for_guest(self, db: Session, event: Event) -> list[Photo]:
+        if not event.album_public:
+            return []
         return (
             db.query(Photo)
             .filter(
@@ -255,7 +281,7 @@ class PhotoService:
 
     def get_photo_for_event(self, db: Session, photo_id: str, event_token: str) -> Photo:
         event = db.query(Event).filter(Event.private_token == event_token).one_or_none()
-        if not event or not event.is_active:
+        if not event or not event.is_active or not event.album_public:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fotoğraf bulunamadı.")
 
         photo = (
@@ -302,6 +328,7 @@ class PhotoService:
                 self.storage.delete(photo.storage_key_thumb)
         except Exception:
             pass
+        photo.content_hash = None
         photo.status = PhotoStatus.DELETED.value
         db.commit()
 
