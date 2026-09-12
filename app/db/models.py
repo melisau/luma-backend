@@ -50,6 +50,13 @@ class AdminUser(Base):
 
 
 class Event(Base):
+    signature_text: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    memory_cover_storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    language: Mapped[str] = mapped_column(String(8), default="tr", server_default="tr")
+    design_theme: Mapped[str] = mapped_column(String(32), default="romantic", server_default="romantic")
+    publish_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    memory_delete_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    memory_purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     access_code_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     album_public: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     __tablename__ = "events"
@@ -96,6 +103,7 @@ class Event(Base):
         back_populates="event", cascade="all, delete-orphan"
     )
     admin: Mapped[AdminUser] = relationship(back_populates="events")
+    members: Mapped[list["EventMember"]] = relationship(back_populates="event", cascade="all, delete-orphan")
 
 
 class Guest(Base):
@@ -110,6 +118,8 @@ class Guest(Base):
     people: Mapped[int] = mapped_column(Integer, default=1)
     dietary_requirements: Mapped[str] = mapped_column(Text, default="", server_default="")
     notes: Mapped[str] = mapped_column(Text, default="", server_default="")
+    group_name: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    table_name: Mapped[str] = mapped_column(String(255), default="", server_default="")
     source: Mapped[str] = mapped_column(String(32), default=GuestSource.ADMIN.value)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -117,6 +127,20 @@ class Guest(Base):
     event: Mapped[Event] = relationship(back_populates="guests")
 
     __table_args__ = (UniqueConstraint("event_id", "email", name="uq_event_guest_email"),)
+
+
+class EventMember(Base):
+    __tablename__ = "event_members"
+    __table_args__ = (UniqueConstraint("event_id", "admin_id", name="uq_event_member_admin"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    event_id: Mapped[str] = mapped_column(String(36), ForeignKey("events.id"), index=True)
+    admin_id: Mapped[str] = mapped_column(String(36), ForeignKey("admin_users.id"), index=True)
+    role: Mapped[str] = mapped_column(String(16), default="viewer")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    event: Mapped[Event] = relationship(back_populates="members")
+    admin: Mapped[AdminUser] = relationship()
 
 
 class GuestbookMessage(Base):

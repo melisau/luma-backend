@@ -6,11 +6,12 @@ from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
 from PIL import Image, ImageOps, UnidentifiedImageError
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
-from app.db.models import Event, Photo, PhotoStatus
+from app.db.models import Event, EventMember, Photo, PhotoStatus
 from app.services.storage import StorageBackend, get_storage
 
 try:
@@ -47,11 +48,14 @@ class PhotoService:
         self.settings = get_settings()
 
     def _validate_event(self, db: Session, event_token: str) -> Event:
-        event = db.query(Event).filter(Event.private_token == event_token).one_or_none()
+        event = db.query(Event).filter(Event.private_token == event_token).with_for_update().one_or_none()
         if not event:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Etkinlik bulunamadı.")
         if not event.is_active:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu etkinlik artık aktif değil.")
+        from app.services.memory_retention import memories_expired
+        if memories_expired(event):
+            raise HTTPException(status_code=410,detail="Anı saklama süresi doldu.")
         if not event.uploads_enabled or not self.settings.uploads_enabled:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Fotoğraf yüklemeleri kapalı.")
         return event
@@ -297,10 +301,14 @@ class PhotoService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fotoğraf bulunamadı.")
         return photo
 
-    def get_photo_admin(self, db: Session, photo_id: str, admin_id: str | None = None) -> Photo:
+    def get_photo_admin(self, db: Session, photo_id: str, admin_id: str | None = None, *, write: bool = True) -> Photo:
         query = db.query(Photo).filter(Photo.id == photo_id, Photo.status != PhotoStatus.DELETED.value)
         if admin_id is not None:
-            query = query.join(Event).filter(Event.admin_id == admin_id)
+            query = query.join(Event).outerjoin(
+                EventMember,
+                (EventMember.event_id == Event.id) & (EventMember.admin_id == admin_id),
+            ).filter(or_(Event.admin_id == admin_id,
+                         EventMember.role == "editor" if write else EventMember.id.is_not(None)))
         photo = query.one_or_none()
         if not photo:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fotoğraf bulunamadı.")

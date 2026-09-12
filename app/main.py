@@ -1,3 +1,5 @@
+import asyncio
+from starlette.concurrency import run_in_threadpool
 from app.api.event_access import router as access_router, require_event_access
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -84,7 +86,22 @@ def mount_frontend(app: FastAPI, frontend_dir) -> None:
 async def lifespan(app: FastAPI):
     init_db()
     seed_database()
-    yield
+    async def cleanup_loop():
+        from app.services.memory_retention import purge_expired_memories
+        while True:
+            await asyncio.sleep(max(60,get_settings().memory_cleanup_interval_seconds))
+            try:
+                result=await run_in_threadpool(purge_expired_memories)
+                if any(result.values()):logger.info('Expired memories removed: %s',result)
+            except Exception:logger.exception('Memory cleanup cycle failed; will retry')
+    task=asyncio.create_task(cleanup_loop()) if get_settings().memory_cleanup_enabled else None
+    try:
+        yield
+    finally:
+        if task:
+            task.cancel()
+            try:await task
+            except asyncio.CancelledError:pass
 
 
 app = FastAPI(title="Luma Planner API", version="0.2.0", lifespan=lifespan)

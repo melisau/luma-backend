@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import create_admin_token, hash_password, verify_password
 from app.db.database import get_db
-from app.db.models import AdminUser, Event
+from app.db.models import AdminUser, Event, EventMember
 from app.schemas.admin import AdminProfile, AdminProfileUpdate
 from app.schemas.event import EventAdmin, EventCreateAdmin, EventUpdateAdmin
 from app.schemas.photo import (
@@ -156,7 +156,7 @@ def get_photo(
     photo = None
     if authorization and authorization.startswith("Bearer "):
         admin = _resolve_admin(authorization, db)
-        photo = photos.get_photo_admin(db, photo_id, admin.id)
+        photo = photos.get_photo_admin(db, photo_id, admin.id, write=False)
     else:
         token = x_event_token or access
         if not token:
@@ -191,7 +191,7 @@ def get_photo_thumbnail(
     photo = None
     if authorization and authorization.startswith("Bearer "):
         admin = _resolve_admin(authorization, db)
-        photo = photos.get_photo_admin(db, photo_id, admin.id)
+        photo = photos.get_photo_admin(db, photo_id, admin.id, write=False)
     else:
         token = x_event_token or access
         if not token:
@@ -294,13 +294,15 @@ def admin_list_events(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    events = (
+    owned = (
         db.query(Event)
         .filter(Event.admin_id == admin.id)
-        .order_by(Event.created_at.desc())
         .all()
     )
-    return [event_to_admin(event) for event in events]
+    memberships = db.query(EventMember).filter(EventMember.admin_id == admin.id).all()
+    result = [event_to_admin(event, "owner") for event in owned]
+    result.extend(event_to_admin(member.event, member.role) for member in memberships)
+    return sorted(result, key=lambda item: item.created_at, reverse=True)
 
 
 @router.post("/admin/events", response_model=EventAdmin, status_code=status.HTTP_201_CREATED)
@@ -320,7 +322,7 @@ def admin_update_event(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_admin_event_or_404(db, event_token, admin.id)
+    event = get_admin_event_or_404(db, event_token, admin.id, write=False)
     event = update_event_admin(db, event, payload)
     return event_to_admin(event)
 
@@ -331,7 +333,7 @@ def admin_delete_event(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_admin_event_or_404(db, event_token, admin.id)
+    event = get_admin_event_or_404(db, event_token, admin.id, owner=True)
     delete_event_admin(db, event)
 
 
@@ -342,7 +344,7 @@ def admin_list_photos(
     admin: AdminUser = Depends(get_current_admin),
     photos: PhotoService = Depends(get_photo_service),
 ):
-    event = get_admin_event_or_404(db, event_token, admin.id)
+    event = get_admin_event_or_404(db, event_token, admin.id, write=False)
     items = photos.list_photos_for_event_admin(db, event.id)
     return [photo_public(item, event_token, admin=True) for item in items]
 

@@ -50,6 +50,8 @@ def create_guest_admin(db: Session, event: Event, payload: GuestCreateAdmin) -> 
         people=payload.people,
         dietary_requirements=payload.dietary_requirements,
         notes=payload.notes,
+        group_name=payload.group_name,
+        table_name=payload.table_name,
         source=payload.source,
     )
     db.add(guest)
@@ -79,7 +81,7 @@ def update_guest_admin(db: Session, event: Event, guest_id: str, payload: GuestU
         guest.status = payload.status
     if payload.people is not None:
         guest.people = payload.people
-    for field in ("dietary_requirements", "notes"):
+    for field in ("dietary_requirements", "notes", "group_name", "table_name"):
         if getattr(payload, field) is not None:
             setattr(guest, field, getattr(payload, field))
     db.commit()
@@ -158,6 +160,10 @@ def list_messages(db: Session, event: Event, *, approved_only: bool = False) -> 
 
 
 def create_message(db: Session, event: Event, name: str, message: str) -> GuestbookMessage:
+    from app.services.memory_retention import memories_expired
+    db.refresh(event, with_for_update=True)
+    if memories_expired(event):
+        raise HTTPException(status_code=410, detail="Anı saklama süresi doldu.")
     if not event.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu etkinlik artık aktif değil.")
     item = GuestbookMessage(
@@ -217,6 +223,7 @@ def invitation_to_public(
     event: Event,
     cover_url: str | None = None,
     music_url: str | None = None,
+    memory_cover_url: str | None = None,
 ):
     from app.schemas.invitation import InvitationPublic
 
@@ -229,7 +236,11 @@ def invitation_to_public(
         tagline=event.tagline or "",
         story_title=event.story_title or "",
         story_text=event.story_text or "",
-        guest_note=event.guest_note or "",
+          guest_note=event.guest_note or "",
+          signature_text=event.signature_text or "",
+          language=event.language,
+          design_theme=event.design_theme,
+          memory_cover_url=memory_cover_url,
         opening_style=event.opening_style,
         address=event.address,
         transport_notes=event.transport_notes,
@@ -251,7 +262,7 @@ def invitation_to_public(
 
 def update_invitation_admin(db: Session, event: Event, payload: InvitationUpdateAdmin) -> Event:
     data = payload.model_dump(exclude_unset=True)
-    text_fields = {"venue", "city", "tagline", "story_title", "story_text", "guest_note"}
+      text_fields = {"venue", "city", "tagline", "story_title", "story_text", "guest_note", "signature_text"}
     for key, value in data.items():
         if key in text_fields and isinstance(value, str):
             setattr(event, key, value.strip())

@@ -1,10 +1,20 @@
 from app.schemas.dates import EventDateModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class EventPublic(EventDateModel):
+class MemoryPolicyModel(EventDateModel):
+    memory_delete_at: datetime | None = None
+
+    @field_validator("memory_delete_at")
+    @classmethod
+    def memory_date_utc(cls,value):
+        if value is None:return None
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+class EventPublic(MemoryPolicyModel):
     model_config = ConfigDict(from_attributes=True)
 
     name: str
@@ -16,10 +26,12 @@ class EventPublic(EventDateModel):
     event_date: datetime | None = None
     venue: str = ""
     city: str = ""
+    publish_at: datetime | None = None
 
 
 class EventAdmin(EventPublic):
     access_code_enabled: bool = False
+    role: str = "owner"
     private_token: str
     invite_path: str
 
@@ -38,9 +50,11 @@ class EventCreateAdmin(EventDateModel):
     is_active: bool = True
 
 
-class EventUpdateAdmin(EventDateModel):
+class EventUpdateAdmin(MemoryPolicyModel):
+    confirm_memory_deletion: bool = False
     album_public: bool | None = None
     access_code: str | None = Field(default=None, max_length=64)
+    publish_at: datetime | None = None
 
     @field_validator("access_code")
     @classmethod

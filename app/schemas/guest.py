@@ -20,6 +20,8 @@ class GuestPublic(BaseModel):
     source: GuestSourceLiteral
     dietary_requirements: str = ""
     notes: str = ""
+    group_name: str = ""
+    table_name: str = ""
     created_at: datetime
     responded_at: datetime | None = None
 
@@ -35,6 +37,8 @@ class GuestCreateAdmin(GuestInput):
     people: int = Field(default=1, ge=1, le=20)
     dietary_requirements: str = Field(default="", max_length=1000)
     notes: str = Field(default="", max_length=2000)
+    group_name: str = Field(default="", max_length=255)
+    table_name: str = Field(default="", max_length=255)
     source: GuestSourceLiteral = "admin"
 
 
@@ -45,6 +49,8 @@ class GuestUpdateAdmin(GuestInput):
     people: int | None = Field(default=None, ge=1, le=20)
     dietary_requirements: str | None = Field(default=None, max_length=1000)
     notes: str | None = Field(default=None, max_length=2000)
+    group_name: str | None = Field(default=None, max_length=255)
+    table_name: str | None = Field(default=None, max_length=255)
 
 
 class RsvpReceipt(GuestPublic):

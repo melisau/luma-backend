@@ -11,6 +11,7 @@ os.environ.setdefault("ADMIN_PASSWORD", "testpassword123")
 os.environ.setdefault("SEED_EVENT_TOKEN", "event-a-token-123456789012345678901234")
 os.environ.setdefault("UPLOADS_PER_MINUTE", "100")
 os.environ.setdefault("SERVE_FRONTEND", "false")
+os.environ.setdefault("MEMORY_CLEANUP_ENABLED", "false")
 os.environ.setdefault("STORAGE_BACKEND", "local")
 
 from app.core.config import get_settings

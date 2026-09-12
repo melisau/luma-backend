@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     storage_secret_access_key: str | None = None
     storage_region: str = "auto"
 
+    memory_cleanup_enabled: bool = True
+    memory_cleanup_interval_seconds: int = 3600
     max_photo_dimension: int = 4096
     max_photo_size_mb: int = 15
     max_photos_per_event: int = 500

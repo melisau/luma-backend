@@ -28,6 +28,10 @@ class InvitationPublic(EventDateModel):
     story_title: str = ""
     story_text: str = ""
     guest_note: str = ""
+    signature_text: str = ""
+    language: Literal["tr", "en"] = "tr"
+    design_theme: Literal["romantic", "minimal", "celebration"] = "romantic"
+    memory_cover_url: str | None = None
     cover_url: str | None = None
     music_url: str | None = None
     music_filename: str | None = None
@@ -53,6 +57,9 @@ class InvitationUpdateAdmin(EventDateModel):
     story_title: str | None = None
     story_text: str | None = None
     guest_note: str | None = None
+    signature_text: str = Field(default="", max_length=255)
+    language: Literal["tr", "en"] = "tr"
+    design_theme: Literal["romantic", "minimal", "celebration"] = "romantic"
 
     @field_validator("name", mode="before")
     @classmethod

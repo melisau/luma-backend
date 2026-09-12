@@ -223,3 +223,21 @@ RSVP POST returns an `edit_token` on the first submission. Updates require that 
 Owners can download `GET /api/admin/events/{event_token}/album.zip`, including pending/approved/hidden photos, excluding deleted photos. Exports are limited to 200 MB and fail if any file is unavailable.
 
 New photo uploads are oriented using EXIF, resized to `MAX_PHOTO_DIMENSION` (4096 by default), and compressed. The processed copy is retained, not the untouched original. Exact processed-content duplicates within an event are skipped and reported as `duplicates_skipped`. Legacy photos without a hash are not retroactively deduplicated. Deleted photos may be uploaded again. Duplicate checks do not detect visually similar photos with different encoding/content.
+
+## Invitation access codes and album privacy
+
+Event owners can PATCH `access_code` (6–64 characters, at most 72 UTF-8 bytes). Omit it to preserve the current code; an empty string removes it. Only its password hash is stored. `access_code_enabled` exposes the state to the owner without returning the code.
+
+Public event data, covers, music, RSVP, messages, photo upload and photo reads require access after a code is enabled. POST `/api/events/{token}/unlock` verifies the code with a five-attempts-per-minute limit per event/IP and issues an HttpOnly, SameSite=Lax cookie for 12 hours. Changing the code revokes previously issued cookies. Use same-site frontend/API domains in production and HTTPS; cross-site cookie restrictions can otherwise block the flow. Owners obtain preview access through an authenticated event-scoped endpoint.
+
+`album_public=false` hides approved photos from guests, including original and thumbnail endpoints. Upload permission remains independent; administrators retain album and ZIP access. Guest photo requests use the API proxy so every new read checks current privacy settings. Previously issued storage URLs remain valid until their original expiry; downloaded copies cannot be recalled.
+
+Retention is a separate, opt-in policy; privacy switches alone never delete memories.
+
+## Opt-in memory retention
+
+An owner may PATCH `memory_delete_at` with `confirm_memory_deletion=true`. A new deadline must be at least 24 hours away. Omitting the date leaves it unchanged; null cancels it. Default is no automatic deletion. After the deadline, guest photo/message access and submissions close while invitation and RSVP remain available.
+
+While the API runs, the background job checks hourly (`MEMORY_CLEANUP_ENABLED`, `MEMORY_CLEANUP_INTERVAL_SECONDS`, minimum interval 60 seconds). It deletes original/thumbnail objects and photo/message records only for explicitly scheduled events. Failed storage deletes preserve their records for retry. Completed policies are marked to avoid repeated work. PostgreSQL row locks coordinate workers and uploads; use one worker with SQLite. A stopped API does not run cleanup; it resumes on the next interval after startup.
+
+RSVP guests, invitation content, invitation cover/music, and activity records remain. This is application memory cleanup, not complete personal-data erasure. Production S3 versioning, provider backups and lifecycle expiration require a separate storage policy.

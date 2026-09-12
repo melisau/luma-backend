@@ -39,6 +39,9 @@ def require_event_access(request: Request, db: Session=Depends(get_db)):
             event=db.query(Event).join(Photo).filter(Photo.id==photo_id).one_or_none()
             if event and not event.album_public:
                 raise HTTPException(status_code=404,detail='Fotoğraf bulunamadı.')
+    from app.services.memory_retention import memories_expired
+    if event and memories_expired(event) and (path.startswith('/api/photos/') or path.rstrip('/').endswith(('/photos','/messages'))):
+        raise HTTPException(status_code=410,detail='Bu etkinliğin anı saklama süresi doldu.')
     if not event or not event.is_active or not event.access_code_hash:return
     raw=request.cookies.get(cookie_name(event),'')
     try:
@@ -71,7 +74,7 @@ def grant_owner_preview(event_token: str,request: Request,response: Response,db:
     from app.api.photos import _resolve_admin
     from app.services.event_service import get_admin_event_or_404
     admin=_resolve_admin(request.headers.get('authorization',''),db)
-    event=get_admin_event_or_404(db,event_token,admin.id)
+    event=get_admin_event_or_404(db,event_token,admin.id,write=False)
     expires=str(int(time.time())+TTL)
     response.set_cookie(cookie_name(event),f'{expires}.{signature(event,expires)}',max_age=TTL,httponly=True,secure=request.url.scheme=='https',samesite='lax',path='/api')
     response.headers['Cache-Control']='no-store'

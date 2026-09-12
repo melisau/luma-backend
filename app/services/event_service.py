@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.security import generate_event_token
-from app.db.models import Event
+from app.db.models import Event, EventMember
 from app.schemas.event import EventCreateAdmin, EventUpdateAdmin
 
 
@@ -30,34 +30,62 @@ def unique_slug(db: Session, base_slug: str, admin_id: str) -> str:
     return slug
 
 
-def get_admin_event_or_404(db: Session, event_token: str, admin_id: str) -> Event:
+def get_admin_event_or_404(
+    db: Session,
+    event_token: str,
+    admin_id: str,
+    *,
+    write: bool = True,
+    owner: bool = False,
+) -> Event:
     event = (
         db.query(Event)
-        .filter(Event.private_token == event_token, Event.admin_id == admin_id)
+        .filter(Event.private_token == event_token)
         .one_or_none()
     )
     if not event:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Etkinlik bulunamadı.")
+    if event.admin_id == admin_id:
+        return event
+    member = db.query(EventMember).filter(
+        EventMember.event_id == event.id, EventMember.admin_id == admin_id
+    ).one_or_none()
+    allowed = member and not owner and (not write or member.role == "editor")
+    if not allowed:
+        # Avoid revealing event existence to unrelated accounts.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Etkinlik bulunamadı.")
     return event
 
 
-def event_to_admin(event: Event):
+def event_to_admin(event: Event, role: str = "owner"):
     from app.schemas.event import EventAdmin
 
     return EventAdmin(
+        memory_delete_at=event.memory_delete_at,
         album_public=event.album_public,
         access_code_enabled=bool(event.access_code_hash),
+        role=role,
         name=event.name,
         slug=event.slug,
         is_active=event.is_active,
         uploads_enabled=event.uploads_enabled,
         created_at=event.created_at,
         event_date=event.event_date,
+        publish_at=event.publish_at,
         venue=event.venue or "",
         city=event.city or "",
         private_token=event.private_token,
         invite_path=f"/e/{event.private_token}",
     )
+
+
+def event_role(db: Session, event: Event, admin_id: str) -> str | None:
+    if event.admin_id == admin_id:
+        return "owner"
+    member = db.query(EventMember).filter(
+        EventMember.event_id == event.id, EventMember.admin_id == admin_id
+    ).one_or_none()
+    return member.role if member else None
 
 
 def create_event_admin(db: Session, payload: EventCreateAdmin, admin_id: str) -> Event:
@@ -86,6 +114,16 @@ def create_event_admin(db: Session, payload: EventCreateAdmin, admin_id: str) ->
 
 def update_event_admin(db: Session, event: Event, payload: EventUpdateAdmin) -> Event:
     data = payload.model_dump(exclude_unset=True)
+    confirmation = data.pop("confirm_memory_deletion", False)
+    if "memory_delete_at" in data:
+        from datetime import datetime, timedelta, timezone
+        deadline = data["memory_delete_at"]
+        if deadline is not None:
+            if not confirmation:
+                raise HTTPException(status_code=422, detail="Fotoğraf ve mesajların kalıcı silinmesini onaylayın.")
+            if deadline < datetime.now(timezone.utc) + timedelta(hours=24):
+                raise HTTPException(status_code=422, detail="Silme tarihi en az 24 saat sonrası olmalı.")
+        event.memory_purged_at = None
     code = data.pop("access_code", None)
     if code is not None:
         from app.core.security import hash_password

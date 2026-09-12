@@ -21,6 +21,7 @@ from app.schemas.guest import (
     RsvpReceipt,
 )
 from app.schemas.invitation import InvitationPublic, InvitationUpdateAdmin
+from app.schemas.member import EventMemberCreate, EventMemberPublic, EventMemberUpdate
 from app.services.activity_service import list_activities, record_activity
 from app.services.event_data_service import (
     create_contact,
@@ -158,7 +159,7 @@ def admin_list_guests(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_admin_event_or_404(db, event_token, admin.id)
+    event = get_admin_event_or_404(db, event_token, admin.id, write=False)
     return [GuestPublic.model_validate(item) for item in list_guests(db, event)]
 
 
@@ -204,7 +205,7 @@ def admin_list_messages(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_admin_event_or_404(db, event_token, admin.id)
+    event = get_admin_event_or_404(db, event_token, admin.id, write=False)
     return [GuestbookMessagePublic.model_validate(item) for item in list_messages(db, event)]
 
 
@@ -238,7 +239,7 @@ def admin_list_activities(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_admin_event_or_404(db, event_token, admin.id)
+    event = get_admin_event_or_404(db, event_token, admin.id, write=False)
     return [ActivityPublic.model_validate(item) for item in list_activities(db, event)]
 
 
@@ -266,7 +267,7 @@ def admin_get_invitation(
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
 ):
-    event = get_admin_event_or_404(db, event_token, admin.id)
+    event = get_admin_event_or_404(db, event_token, admin.id, write=False)
     return _invitation_public(event, event_token, covers, music)
 
 
@@ -371,16 +372,17 @@ def admin_delete_contact(
 def export_guests_csv(event_token: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
     import csv
     from io import StringIO
-    event = get_admin_event_or_404(db, event_token, admin.id)
+    event = get_admin_event_or_404(db, event_token, admin.id, write=False)
     output = StringIO(newline="")
     writer = csv.writer(output)
-    writer.writerow(["Ad Soyad", "E-posta", "Durum", "Kişi Sayısı", "Beslenme", "Not", "Yanıt Zamanı"])
+    writer.writerow(["Ad Soyad", "E-posta", "Durum", "Kişi Sayısı", "Grup", "Masa", "Beslenme", "Not", "Yanıt Zamanı"])
     def safe(value):
         value = str(value or "")
         return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) or value.startswith(("\t", "\r", "\n")) else value
     labels = {"attending": "Katılacak", "declined": "Katılmayacak", "pending": "Bekleniyor"}
     for guest in list_guests(db, event):
         writer.writerow([safe(guest.name), safe(guest.email), labels[guest.status], guest.people,
+                         safe(guest.group_name), safe(guest.table_name),
                          safe(guest.dietary_requirements), safe(guest.notes),
                          guest.responded_at.isoformat() if guest.responded_at else ""])
     return Response(content=("\ufeff" + output.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8",
@@ -400,3 +402,53 @@ def issue_rsvp_link(event_token: str, guest_id: str, db: Session = Depends(get_d
     guest.rsvp_token_hash = hashlib.sha256(token.encode()).hexdigest()
     db.commit()
     return JSONResponse({"edit_token": token}, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/admin/events/{event_token}/members", response_model=list[EventMemberPublic])
+def list_event_members(event_token: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    event = get_admin_event_or_404(db, event_token, admin.id, write=False)
+    members = [EventMemberPublic(id=event.admin.id, email=event.admin.email,
+                                display_name=event.admin.display_name, role="owner",
+                                created_at=event.admin.created_at)]
+    members.extend(EventMemberPublic(id=item.id, email=item.admin.email,
+                                     display_name=item.admin.display_name, role=item.role,
+                                     created_at=item.created_at) for item in event.members)
+    return members
+
+
+@router.post("/admin/events/{event_token}/members", response_model=EventMemberPublic, status_code=201)
+def add_event_member(event_token: str, payload: EventMemberCreate, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    from app.db.models import EventMember
+    event = get_admin_event_or_404(db, event_token, admin.id, owner=True)
+    target = db.query(AdminUser).filter(AdminUser.email == str(payload.email).lower()).one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="Bu e-posta ile kayıtlı bir yönetici hesabı yok.")
+    if target.id == event.admin_id:
+        raise HTTPException(status_code=409, detail="Etkinlik sahibi zaten ekipte.")
+    member = db.query(EventMember).filter(EventMember.event_id == event.id, EventMember.admin_id == target.id).one_or_none()
+    if member:
+        raise HTTPException(status_code=409, detail="Bu yönetici zaten ekipte.")
+    member = EventMember(event_id=event.id, admin_id=target.id, role=payload.role)
+    db.add(member); db.commit(); db.refresh(member)
+    return EventMemberPublic(id=member.id, email=target.email, display_name=target.display_name,
+                             role=member.role, created_at=member.created_at)
+
+
+@router.patch("/admin/events/{event_token}/members/{member_id}", response_model=EventMemberPublic)
+def change_event_member(event_token: str, member_id: str, payload: EventMemberUpdate, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    from app.db.models import EventMember
+    event = get_admin_event_or_404(db, event_token, admin.id, owner=True)
+    member = db.query(EventMember).filter(EventMember.id == member_id, EventMember.event_id == event.id).one_or_none()
+    if not member: raise HTTPException(status_code=404, detail="Ekip üyesi bulunamadı.")
+    member.role = payload.role; db.commit(); db.refresh(member)
+    return EventMemberPublic(id=member.id, email=member.admin.email, display_name=member.admin.display_name,
+                             role=member.role, created_at=member.created_at)
+
+
+@router.delete("/admin/events/{event_token}/members/{member_id}", status_code=204)
+def remove_event_member(event_token: str, member_id: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    from app.db.models import EventMember
+    event = get_admin_event_or_404(db, event_token, admin.id, owner=True)
+    member = db.query(EventMember).filter(EventMember.id == member_id, EventMember.event_id == event.id).one_or_none()
+    if not member: raise HTTPException(status_code=404, detail="Ekip üyesi bulunamadı.")
+    db.delete(member); db.commit()
