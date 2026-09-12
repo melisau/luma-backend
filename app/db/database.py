@@ -24,6 +24,14 @@ def get_db() -> Generator[Session, None, None]:
 
 
 EVENT_COLUMN_MIGRATIONS: dict[str, str] = {
+    "envelope_color": "VARCHAR(20) NOT NULL DEFAULT '#e9dcc4'",
+    "seal_color": "VARCHAR(20) NOT NULL DEFAULT '#873f43'",
+    "paper_color": "VARCHAR(20) NOT NULL DEFAULT '#fffdf7'",
+    "envelope_texture": "VARCHAR(20) NOT NULL DEFAULT 'linen'",
+    "envelope_pattern": "VARCHAR(20) NOT NULL DEFAULT 'plain'",
+    "seal_motif": "VARCHAR(20) NOT NULL DEFAULT 'botanical'",
+
+    "opening_style": "VARCHAR(32) NOT NULL DEFAULT 'classic'",
     "event_date": "DATETIME",
     "venue": "VARCHAR(255) DEFAULT ''",
     "city": "VARCHAR(255) DEFAULT ''",

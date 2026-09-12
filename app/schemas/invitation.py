@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -6,6 +7,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class InvitationPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    envelope_color: str = Field(default="#e9dcc4", pattern=r"^#[0-9a-fA-F]{6}$")
+    seal_color: str = Field(default="#873f43", pattern=r"^#[0-9a-fA-F]{6}$")
+    paper_color: str = Field(default="#fffdf7", pattern=r"^#[0-9a-fA-F]{6}$")
+    envelope_texture: Literal["smooth", "linen", "grain"] = "linen"
+    envelope_pattern: Literal["plain", "pinstripe", "botanical", "lace", "floral_cut", "embossed"] = "plain"
+    seal_motif: Literal["botanical", "heart", "monogram"] = "botanical"
+    opening_style: Literal["classic", "envelope"] = "classic"
     name: str
     slug: str
     event_date: datetime | None = None
@@ -21,6 +29,13 @@ class InvitationPublic(BaseModel):
 
 
 class InvitationUpdateAdmin(BaseModel):
+    envelope_color: str = Field(default="#e9dcc4", pattern=r"^#[0-9a-fA-F]{6}$")
+    seal_color: str = Field(default="#873f43", pattern=r"^#[0-9a-fA-F]{6}$")
+    paper_color: str = Field(default="#fffdf7", pattern=r"^#[0-9a-fA-F]{6}$")
+    envelope_texture: Literal["smooth", "linen", "grain"] = "linen"
+    envelope_pattern: Literal["plain", "pinstripe", "botanical", "lace", "floral_cut", "embossed"] = "plain"
+    seal_motif: Literal["botanical", "heart", "monogram"] = "botanical"
+    opening_style: Literal["classic", "envelope"] = "classic"
     name: str | None = Field(default=None, max_length=255)
     event_date: datetime | None = None
     venue: str | None = None
