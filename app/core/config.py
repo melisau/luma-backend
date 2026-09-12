@@ -47,6 +47,28 @@ class Settings(BaseSettings):
     seed_event_token: str | None = None
 
     public_base_url: str | None = None
+    email_backend: str = "console"
+    email_from: str = "Luma <noreply@localhost>"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = True
+    environment: str = "development"
+    sentry_dsn: str | None = None
+    rate_limit_backend: str = "memory"
+
+    def validate_production(self) -> None:
+        if self.environment != "production": return
+        errors=[]
+        if self.secret_key in {"change-me-in-production", "change-me-use-openssl-rand-hex-32"} or len(self.secret_key)<32: errors.append("SECRET_KEY en az 32 karakter olmalı")
+        if not self.database_url.startswith("postgresql"): errors.append("DATABASE_URL PostgreSQL olmalı")
+        if self.storage_backend != "s3" or not all((self.storage_endpoint,self.storage_bucket,self.storage_access_key_id,self.storage_secret_access_key)): errors.append("özel S3/R2 ayarları eksik")
+        if not self.public_base_url or not self.public_base_url.startswith("https://"): errors.append("PUBLIC_BASE_URL HTTPS olmalı")
+        if any(not origin.startswith("https://") for origin in self.cors_origins): errors.append("FRONTEND_ORIGINS yalnızca HTTPS olmalı")
+        if self.rate_limit_backend != "database": errors.append("RATE_LIMIT_BACKEND=database olmalı")
+        if self.email_backend == "smtp" and not self.smtp_host: errors.append("SMTP_HOST eksik")
+        if errors: raise RuntimeError("Üretim yapılandırması geçersiz: " + "; ".join(errors))
 
     serve_frontend: bool = True
     frontend_path: Path = ROOT.parent / "luma-frontend"

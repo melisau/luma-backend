@@ -29,6 +29,8 @@ class InvitationPublic(EventDateModel):
     story_text: str = ""
     guest_note: str = ""
     signature_text: str = ""
+    memory_title: str = ""
+    memory_text: str = ""
     language: Literal["tr", "en"] = "tr"
     design_theme: Literal["romantic", "minimal", "celebration"] = "romantic"
     memory_cover_url: str | None = None
@@ -58,6 +60,8 @@ class InvitationUpdateAdmin(EventDateModel):
     story_text: str | None = None
     guest_note: str | None = None
     signature_text: str = Field(default="", max_length=255)
+    memory_title: str = Field(default="", max_length=255)
+    memory_text: str = Field(default="", max_length=2000)
     language: Literal["tr", "en"] = "tr"
     design_theme: Literal["romantic", "minimal", "celebration"] = "romantic"
 

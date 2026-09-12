@@ -1,4 +1,8 @@
 import logging
+import hashlib
+import secrets
+from datetime import timedelta
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile, status
@@ -8,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import create_admin_token, hash_password, verify_password
 from app.db.database import get_db
-from app.db.models import AdminUser, Event, EventMember
+from app.db.models import AccountToken, AdminUser, Event, EventMember
 from app.schemas.admin import AdminProfile, AdminProfileUpdate
 from app.schemas.event import EventAdmin, EventCreateAdmin, EventUpdateAdmin
 from app.schemas.photo import (
@@ -21,7 +25,9 @@ from app.schemas.photo import (
     PhotoUpdateAdmin,
     PhotoUploadResponse,
     SignedPhotoResponse,
+    EmailRequest, AccountTokenConfirm, PasswordResetConfirm,
 )
+from app.services.email_service import send_email
 from app.services.event_service import (
     create_event_admin,
     delete_event_admin,
@@ -36,6 +42,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["photos"])
 
+def _account_token(db: Session, admin: AdminUser, purpose: str, minutes: int) -> str:
+    raw=secrets.token_urlsafe(32)
+    db.add(AccountToken(admin_id=admin.id,token_hash=hashlib.sha256(raw.encode()).hexdigest(),purpose=purpose,expires_at=datetime.now(timezone.utc)+timedelta(minutes=minutes)))
+    db.commit();return raw
+
+def _frontend_link(kind: str, token: str) -> str:
+    base=(get_settings().public_base_url or "http://localhost:5500").rstrip("/")
+    return f"{base}/?{kind}_token={token}"
+
+def _consume_token(db: Session, raw: str, purpose: str) -> AccountToken:
+    item=db.query(AccountToken).filter(AccountToken.token_hash==hashlib.sha256(raw.encode()).hexdigest(),AccountToken.purpose==purpose,AccountToken.used_at.is_(None)).one_or_none()
+    if not item: raise HTTPException(status_code=400,detail="Bağlantı geçersiz veya daha önce kullanılmış.")
+    expiry=item.expires_at if item.expires_at.tzinfo else item.expires_at.replace(tzinfo=timezone.utc)
+    if expiry<datetime.now(timezone.utc): raise HTTPException(status_code=400,detail="Bağlantının süresi dolmuş.")
+    return item
+
 
 def get_photo_service() -> PhotoService:
     return PhotoService()
@@ -47,6 +69,10 @@ def get_event_by_token(db: Session, event_token: str) -> Event:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Etkinlik bulunamadı.")
     if not event.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu etkinlik artık aktif değil.")
+    if event.publish_at:
+        publish_at = event.publish_at if event.publish_at.tzinfo else event.publish_at.replace(tzinfo=timezone.utc)
+        if publish_at > datetime.now(timezone.utc):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu davetiye henüz yayında değil.")
     return event
 
 
@@ -232,6 +258,9 @@ def admin_register(payload: AdminRegisterRequest, request: Request, db: Session 
     db.add(admin)
     db.commit()
     db.refresh(admin)
+    raw=_account_token(db,admin,"verify",24*60)
+    try: send_email(admin.email,"Luma e-posta doğrulama",f"E-posta adresinizi doğrulayın: {_frontend_link('verify',raw)}")
+    except Exception: logger.exception("Verification email failed")
     return AdminLoginResponse(
         access_token=create_admin_token(admin.email),
         email=admin.email,
@@ -304,6 +333,31 @@ def admin_list_events(
     result.extend(event_to_admin(member.event, member.role) for member in memberships)
     return sorted(result, key=lambda item: item.created_at, reverse=True)
 
+@router.post("/admin/password-reset/request", status_code=202)
+def request_password_reset(payload: EmailRequest, request: Request, db: Session=Depends(get_db)):
+    enforce_login_rate_limit(request.client.host if request.client else "unknown")
+    admin=db.query(AdminUser).filter(AdminUser.email==payload.email.strip().lower()).one_or_none()
+    if admin:
+        raw=_account_token(db,admin,"reset",30)
+        try: send_email(admin.email,"Luma parola sıfırlama",f"Parolanızı 30 dakika içinde sıfırlayın: {_frontend_link('reset',raw)}")
+        except Exception: logger.exception("Password reset email failed")
+    return {"detail":"Hesap varsa parola sıfırlama bağlantısı gönderildi."}
+
+@router.post("/admin/password-reset/confirm")
+def confirm_password_reset(payload: PasswordResetConfirm, db: Session=Depends(get_db)):
+    item=_consume_token(db,payload.token,"reset");item.admin.password_hash=hash_password(payload.new_password);item.used_at=datetime.now(timezone.utc);db.commit();return {"detail":"Parola güncellendi."}
+
+@router.post("/admin/email-verification/request", status_code=202)
+def request_email_verification(db: Session=Depends(get_db), admin: AdminUser=Depends(get_current_admin)):
+    raw=_account_token(db,admin,"verify",24*60)
+    try: send_email(admin.email,"Luma e-posta doğrulama",f"E-posta adresinizi doğrulayın: {_frontend_link('verify',raw)}")
+    except Exception: logger.exception("Verification email failed")
+    return {"detail":"Doğrulama bağlantısı gönderildi."}
+
+@router.post("/admin/email-verification/confirm")
+def confirm_email_verification(payload: AccountTokenConfirm, db: Session=Depends(get_db)):
+    item=_consume_token(db,payload.token,"verify");item.admin.email_verified_at=datetime.now(timezone.utc);item.used_at=datetime.now(timezone.utc);db.commit();return {"detail":"E-posta doğrulandı."}
+
 
 @router.post("/admin/events", response_model=EventAdmin, status_code=status.HTTP_201_CREATED)
 def admin_create_event(
@@ -322,7 +376,7 @@ def admin_update_event(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    event = get_admin_event_or_404(db, event_token, admin.id, write=False)
+    event = get_admin_event_or_404(db, event_token, admin.id)
     event = update_event_admin(db, event, payload)
     return event_to_admin(event)
 

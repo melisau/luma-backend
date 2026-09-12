@@ -27,6 +27,8 @@ class EventPublic(MemoryPolicyModel):
     venue: str = ""
     city: str = ""
     publish_at: datetime | None = None
+    rsvp_reminder_at: datetime | None = None
+    rsvp_reminder_sent_at: datetime | None = None
 
 
 class EventAdmin(EventPublic):
@@ -55,6 +57,13 @@ class EventUpdateAdmin(MemoryPolicyModel):
     album_public: bool | None = None
     access_code: str | None = Field(default=None, max_length=64)
     publish_at: datetime | None = None
+    rsvp_reminder_at: datetime | None = None
+
+    @field_validator("publish_at", "rsvp_reminder_at")
+    @classmethod
+    def publish_date_utc(cls, value):
+        if value is None: return None
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
     @field_validator("access_code")
     @classmethod

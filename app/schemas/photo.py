@@ -78,6 +78,15 @@ class AdminChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=8)
     new_password: str = Field(min_length=8)
 
+class EmailRequest(BaseModel):
+    email: str
+
+class AccountTokenConfirm(BaseModel):
+    token: str = Field(min_length=20)
+
+class PasswordResetConfirm(AccountTokenConfirm):
+    new_password: str = Field(min_length=8)
+
 
 class SignedPhotoResponse(BaseModel):
     url: str

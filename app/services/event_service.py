@@ -72,6 +72,8 @@ def event_to_admin(event: Event, role: str = "owner"):
         created_at=event.created_at,
         event_date=event.event_date,
         publish_at=event.publish_at,
+        rsvp_reminder_at=event.rsvp_reminder_at,
+        rsvp_reminder_sent_at=event.rsvp_reminder_sent_at,
         venue=event.venue or "",
         city=event.city or "",
         private_token=event.private_token,
@@ -114,6 +116,8 @@ def create_event_admin(db: Session, payload: EventCreateAdmin, admin_id: str) ->
 
 def update_event_admin(db: Session, event: Event, payload: EventUpdateAdmin) -> Event:
     data = payload.model_dump(exclude_unset=True)
+    if "rsvp_reminder_at" in data:
+        event.rsvp_reminder_sent_at = None
     confirmation = data.pop("confirm_memory_deletion", False)
     if "memory_delete_at" in data:
         from datetime import datetime, timedelta, timezone
@@ -172,6 +176,11 @@ def delete_event_admin(db: Session, event: Event) -> None:
     if event.music_storage_key:
         try:
             storage.delete(event.music_storage_key)
+        except Exception:
+            pass
+    if event.memory_cover_storage_key:
+        try:
+            storage.delete(event.memory_cover_storage_key)
         except Exception:
             pass
     db.delete(event)

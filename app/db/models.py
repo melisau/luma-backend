@@ -43,6 +43,7 @@ class AdminUser(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     contacts: Mapped[list["Contact"]] = relationship(back_populates="admin", cascade="all, delete-orphan")
@@ -51,10 +52,14 @@ class AdminUser(Base):
 
 class Event(Base):
     signature_text: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    memory_title: Mapped[str] = mapped_column(String(255), default="Gözünden bizim hikâyemiz.", server_default="Gözünden bizim hikâyemiz.")
+    memory_text: Mapped[str] = mapped_column(Text, default="O gece yakaladığın en güzel anları bizimle paylaş. Her kare, yıllarca saklayacağımız bir hatıraya dönüşsün.", server_default="")
     memory_cover_storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     language: Mapped[str] = mapped_column(String(8), default="tr", server_default="tr")
     design_theme: Mapped[str] = mapped_column(String(32), default="romantic", server_default="romantic")
     publish_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rsvp_reminder_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rsvp_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     memory_delete_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     memory_purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     access_code_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -205,3 +210,21 @@ class EventActivity(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     event: Mapped[Event] = relationship(back_populates="activities")
+
+
+class AccountToken(Base):
+    __tablename__ = "account_tokens"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    admin_id: Mapped[str] = mapped_column(String(36), ForeignKey("admin_users.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    purpose: Mapped[str] = mapped_column(String(24), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    admin: Mapped[AdminUser] = relationship()
+
+class RateLimitEvent(Base):
+    __tablename__="rate_limit_events"
+    id: Mapped[str]=mapped_column(String(36),primary_key=True)
+    bucket_key: Mapped[str]=mapped_column(String(255),index=True)
+    created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),index=True,default=utc_now)

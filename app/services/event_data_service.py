@@ -236,11 +236,13 @@ def invitation_to_public(
         tagline=event.tagline or "",
         story_title=event.story_title or "",
         story_text=event.story_text or "",
-          guest_note=event.guest_note or "",
-          signature_text=event.signature_text or "",
-          language=event.language,
-          design_theme=event.design_theme,
-          memory_cover_url=memory_cover_url,
+        guest_note=event.guest_note or "",
+        signature_text=event.signature_text or "",
+        memory_title=event.memory_title or "",
+        memory_text=event.memory_text or "",
+        language=event.language,
+        design_theme=event.design_theme,
+        memory_cover_url=memory_cover_url,
         opening_style=event.opening_style,
         address=event.address,
         transport_notes=event.transport_notes,
@@ -262,7 +264,7 @@ def invitation_to_public(
 
 def update_invitation_admin(db: Session, event: Event, payload: InvitationUpdateAdmin) -> Event:
     data = payload.model_dump(exclude_unset=True)
-      text_fields = {"venue", "city", "tagline", "story_title", "story_text", "guest_note", "signature_text"}
+    text_fields = {"venue", "city", "tagline", "story_title", "story_text", "guest_note", "signature_text", "memory_title", "memory_text"}
     for key, value in data.items():
         if key in text_fields and isinstance(value, str):
             setattr(event, key, value.strip())

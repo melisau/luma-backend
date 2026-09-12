@@ -4,6 +4,8 @@ from app.api.event_access import router as access_router, require_event_access
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import logging
+import uuid
+import time
 
 from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +24,12 @@ from app.db.database import init_db
 from app.db.models import AdminUser, Event
 
 logger = logging.getLogger(__name__)
+if get_settings().sentry_dsn:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(dsn=get_settings().sentry_dsn,environment=get_settings().environment,send_default_pii=False)
+    except ImportError:
+        logger.warning("SENTRY_DSN ayarlı ancak sentry-sdk kurulu değil")
 
 PRIVATE_HEADERS = {
     "Cache-Control": "private, no-store",
@@ -84,6 +92,7 @@ def mount_frontend(app: FastAPI, frontend_dir) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    get_settings().validate_production()
     init_db()
     seed_database()
     async def cleanup_loop():
@@ -94,7 +103,14 @@ async def lifespan(app: FastAPI):
                 result=await run_in_threadpool(purge_expired_memories)
                 if any(result.values()):logger.info('Expired memories removed: %s',result)
             except Exception:logger.exception('Memory cleanup cycle failed; will retry')
+    async def reminder_loop():
+        from app.services.reminder_service import send_due_reminders
+        while True:
+            await asyncio.sleep(60)
+            try: await run_in_threadpool(send_due_reminders)
+            except Exception: logger.exception('RSVP reminder cycle failed; will retry')
     task=asyncio.create_task(cleanup_loop()) if get_settings().memory_cleanup_enabled else None
+    reminder_task=asyncio.create_task(reminder_loop())
     try:
         yield
     finally:
@@ -102,6 +118,9 @@ async def lifespan(app: FastAPI):
             task.cancel()
             try:await task
             except asyncio.CancelledError:pass
+        reminder_task.cancel()
+        try: await reminder_task
+        except asyncio.CancelledError: pass
 
 
 app = FastAPI(title="Luma Planner API", version="0.2.0", lifespan=lifespan)
@@ -128,7 +147,10 @@ if frontend_dir:
 
 @app.middleware("http")
 async def privacy_headers_middleware(request: Request, call_next):
+    request_id=request.headers.get("X-Request-ID") or str(uuid.uuid4());started=time.perf_counter()
     response = await call_next(request)
+    response.headers["X-Request-ID"]=request_id
+    logger.info("request method=%s path=%s status=%s duration_ms=%.1f request_id=%s",request.method,request.url.path,response.status_code,(time.perf_counter()-started)*1000,request_id)
     if request.url.path.startswith(("/e/", "/api/")):
         for key, value in PRIVATE_HEADERS.items():
             response.headers.setdefault(key, value)

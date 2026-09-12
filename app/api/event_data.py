@@ -42,6 +42,9 @@ from app.services.event_data_service import (
 from app.services.rate_limit import enforce_message_rate_limit, enforce_rsvp_rate_limit
 from app.services.invitation_cover_service import InvitationCoverService
 from app.services.invitation_music_service import InvitationMusicService
+from app.services.memory_cover_service import MemoryCoverService
+from app.services.email_service import send_email
+from app.core.config import get_settings
 
 router = APIRouter(tags=["event-data"])
 
@@ -52,6 +55,9 @@ def get_cover_service() -> InvitationCoverService:
 
 def get_music_service() -> InvitationMusicService:
     return InvitationMusicService()
+
+def get_memory_cover_service() -> MemoryCoverService:
+    return MemoryCoverService()
 
 
 def _cover_url(event, token: str, covers: InvitationCoverService) -> str | None:
@@ -66,11 +72,12 @@ def _music_url(event, token: str, music: InvitationMusicService) -> str | None:
     return music.music_url(event, token)
 
 
-def _invitation_public(event, token: str, covers: InvitationCoverService, music: InvitationMusicService):
+def _invitation_public(event, token: str, covers: InvitationCoverService, music: InvitationMusicService, memory: MemoryCoverService):
     return invitation_to_public(
         event,
         _cover_url(event, token, covers),
         _music_url(event, token, music),
+        memory.url(event, token),
     )
 
 
@@ -80,9 +87,16 @@ def get_public_invitation(
     db: Session = Depends(get_db),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
+    memory: MemoryCoverService = Depends(get_memory_cover_service),
 ):
     event = get_event_by_token(db, event_token)
-    return _invitation_public(event, event_token, covers, music)
+    return _invitation_public(event, event_token, covers, music, memory)
+
+@router.get("/events/{event_token}/memory-cover")
+def get_public_memory_cover(event_token: str, db: Session = Depends(get_db), memory: MemoryCoverService = Depends(get_memory_cover_service)):
+    event = get_event_by_token(db, event_token)
+    data, content_type = memory.stream(event)
+    return Response(content=data, media_type=content_type, headers={"Cache-Control": "private, no-store"})
 
 
 @router.get("/events/{event_token}/cover")
@@ -127,6 +141,11 @@ def public_rsvp(
     enforce_rsvp_rate_limit(request.client.host if request.client else "unknown", event_token)
     response.headers["Cache-Control"] = "no-store"
     guest, edit_token = submit_rsvp(db, event, payload)
+    try:
+        url=f"{(get_settings().public_base_url or 'http://localhost:5500').rstrip('/')}/e/{event_token}"
+        send_email(guest.email,f"{event.name} RSVP onayı",f"Yanıtınız alındı: {guest.people} kişi, durum: {guest.status}. Davetiye: {url}")
+    except Exception:
+        import logging; logging.getLogger(__name__).exception("RSVP confirmation email failed")
     return RsvpReceipt(**GuestPublic.model_validate(guest).model_dump(), edit_token=edit_token)
 
 
@@ -266,9 +285,10 @@ def admin_get_invitation(
     admin: AdminUser = Depends(get_current_admin),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
+    memory: MemoryCoverService = Depends(get_memory_cover_service),
 ):
     event = get_admin_event_or_404(db, event_token, admin.id, write=False)
-    return _invitation_public(event, event_token, covers, music)
+    return _invitation_public(event, event_token, covers, music, memory)
 
 
 @router.patch("/admin/events/{event_token}/invitation", response_model=InvitationPublic)
@@ -279,10 +299,11 @@ def admin_update_invitation(
     admin: AdminUser = Depends(get_current_admin),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
+    memory: MemoryCoverService = Depends(get_memory_cover_service),
 ):
     event = get_admin_event_or_404(db, event_token, admin.id)
     event = update_invitation_admin(db, event, payload)
-    return _invitation_public(event, event_token, covers, music)
+    return _invitation_public(event, event_token, covers, music, memory)
 
 
 @router.post("/admin/events/{event_token}/invitation/cover", response_model=InvitationPublic)
@@ -293,10 +314,11 @@ async def admin_upload_cover(
     admin: AdminUser = Depends(get_current_admin),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
+    memory: MemoryCoverService = Depends(get_memory_cover_service),
 ):
     event = get_admin_event_or_404(db, event_token, admin.id)
     event = covers.upload_cover(db, event, file)
-    return _invitation_public(event, event_token, covers, music)
+    return _invitation_public(event, event_token, covers, music, memory)
 
 
 @router.delete("/admin/events/{event_token}/invitation/cover", response_model=InvitationPublic)
@@ -306,10 +328,11 @@ def admin_delete_cover(
     admin: AdminUser = Depends(get_current_admin),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
+    memory: MemoryCoverService = Depends(get_memory_cover_service),
 ):
     event = get_admin_event_or_404(db, event_token, admin.id)
     event = covers.remove_cover(db, event)
-    return _invitation_public(event, event_token, covers, music)
+    return _invitation_public(event, event_token, covers, music, memory)
 
 
 @router.post("/admin/events/{event_token}/invitation/music", response_model=InvitationPublic)
@@ -320,11 +343,12 @@ async def admin_upload_music(
     admin: AdminUser = Depends(get_current_admin),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
+    memory: MemoryCoverService = Depends(get_memory_cover_service),
 ):
     event = get_admin_event_or_404(db, event_token, admin.id)
     event = music.upload_music(db, event, file)
     record_activity(db, event, "Davetiye müziği güncellendi", "sparkle")
-    return _invitation_public(event, event_token, covers, music)
+    return _invitation_public(event, event_token, covers, music, memory)
 
 
 @router.delete("/admin/events/{event_token}/invitation/music", response_model=InvitationPublic)
@@ -334,11 +358,24 @@ def admin_delete_music(
     admin: AdminUser = Depends(get_current_admin),
     covers: InvitationCoverService = Depends(get_cover_service),
     music: InvitationMusicService = Depends(get_music_service),
+    memory: MemoryCoverService = Depends(get_memory_cover_service),
 ):
     event = get_admin_event_or_404(db, event_token, admin.id)
     event = music.remove_music(db, event)
     record_activity(db, event, "Davetiye müziği kaldırıldı", "sparkle")
-    return _invitation_public(event, event_token, covers, music)
+    return _invitation_public(event, event_token, covers, music, memory)
+
+@router.post("/admin/events/{event_token}/invitation/memory-cover", response_model=InvitationPublic)
+async def admin_upload_memory_cover(event_token: str, file: Annotated[UploadFile, File()], db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin), covers: InvitationCoverService = Depends(get_cover_service), music: InvitationMusicService = Depends(get_music_service), memory: MemoryCoverService = Depends(get_memory_cover_service)):
+    event = get_admin_event_or_404(db, event_token, admin.id)
+    event = memory.upload(db, event, file)
+    return _invitation_public(event, event_token, covers, music, memory)
+
+@router.delete("/admin/events/{event_token}/invitation/memory-cover", response_model=InvitationPublic)
+def admin_delete_memory_cover(event_token: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin), covers: InvitationCoverService = Depends(get_cover_service), music: InvitationMusicService = Depends(get_music_service), memory: MemoryCoverService = Depends(get_memory_cover_service)):
+    event = get_admin_event_or_404(db, event_token, admin.id)
+    event = memory.remove(db, event)
+    return _invitation_public(event, event_token, covers, music, memory)
 
 
 @router.get("/admin/contacts", response_model=list[ContactPublic])
@@ -375,16 +412,16 @@ def export_guests_csv(event_token: str, db: Session = Depends(get_db), admin: Ad
     event = get_admin_event_or_404(db, event_token, admin.id, write=False)
     output = StringIO(newline="")
     writer = csv.writer(output)
-    writer.writerow(["Ad Soyad", "E-posta", "Durum", "Kişi Sayısı", "Grup", "Masa", "Beslenme", "Not", "Yanıt Zamanı"])
+    writer.writerow(["Ad Soyad", "E-posta", "Durum", "Kişi Sayısı", "Beslenme", "Not", "Yanıt Zamanı", "Grup", "Masa"])
     def safe(value):
         value = str(value or "")
         return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) or value.startswith(("\t", "\r", "\n")) else value
     labels = {"attending": "Katılacak", "declined": "Katılmayacak", "pending": "Bekleniyor"}
     for guest in list_guests(db, event):
         writer.writerow([safe(guest.name), safe(guest.email), labels[guest.status], guest.people,
-                         safe(guest.group_name), safe(guest.table_name),
                          safe(guest.dietary_requirements), safe(guest.notes),
-                         guest.responded_at.isoformat() if guest.responded_at else ""])
+                         guest.responded_at.isoformat() if guest.responded_at else "",
+                         safe(guest.group_name), safe(guest.table_name)])
     return Response(content=("\ufeff" + output.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": 'attachment; filename="luma-guests.csv"', "Cache-Control": "private, no-store"})
 

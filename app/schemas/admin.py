@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -6,6 +7,7 @@ class AdminProfile(BaseModel):
 
     email: str
     display_name: str | None = None
+    email_verified_at: datetime | None = None
 
 
 class AdminProfileUpdate(BaseModel):

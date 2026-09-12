@@ -1,4 +1,7 @@
 import time
+import hashlib
+import uuid
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict, deque
 
 from fastapi import HTTPException, status
@@ -11,6 +14,8 @@ class RateLimiter:
         self._events: dict[str, deque[float]] = defaultdict(deque)
 
     def check(self, key: str, limit: int, window_seconds: int = 60, detail: str | None = None) -> None:
+        if get_settings().rate_limit_backend == "database":
+            return self._database_check(key, limit, window_seconds, detail)
         now = time.monotonic()
         bucket = self._events[key]
         while bucket and now - bucket[0] > window_seconds:
@@ -21,6 +26,22 @@ class RateLimiter:
                 detail=detail or "Çok fazla yükleme denemesi. Lütfen biraz bekleyin.",
             )
         bucket.append(now)
+
+    def _database_check(self, key, limit, window_seconds, detail):
+        from sqlalchemy import text
+        from app.db import database as db_module
+        db=db_module.SessionLocal()
+        try:
+            if get_settings().database_url.startswith("postgresql"):
+                lock=int(hashlib.sha256(key.encode()).hexdigest()[:15],16)
+                db.execute(text("SELECT pg_advisory_xact_lock(:lock)"),{"lock":lock})
+            cutoff=datetime.now(timezone.utc)-timedelta(seconds=window_seconds)
+            db.execute(text("DELETE FROM rate_limit_events WHERE created_at < :cutoff"),{"cutoff":cutoff})
+            count=db.execute(text("SELECT COUNT(*) FROM rate_limit_events WHERE bucket_key=:key AND created_at>=:cutoff"),{"key":key,"cutoff":cutoff}).scalar_one()
+            if count>=limit:
+                db.rollback();raise HTTPException(status_code=429,detail=detail or "Çok fazla istek. Lütfen biraz bekleyin.")
+            db.execute(text("INSERT INTO rate_limit_events (id,bucket_key,created_at) VALUES (:id,:key,:now)"),{"id":str(uuid.uuid4()),"key":key,"now":datetime.now(timezone.utc)});db.commit()
+        finally: db.close()
 
 
 upload_rate_limiter = RateLimiter()
