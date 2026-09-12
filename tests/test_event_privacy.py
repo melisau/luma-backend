@@ -75,3 +75,12 @@ def test_invalid_code_and_settings_keep_existing_code(client,admin_headers):
     configure(client,admin_headers,access_code='TestCode123')
     configure(client,admin_headers,album_public=False)
     assert client.get(f'/api/events/{TOKEN}/invitation').status_code==423
+
+
+def test_guest_media_never_issues_storage_signed_url(client,admin_headers,monkeypatch):
+    pid=photo(client,admin_headers)
+    from app.services.photo_service import PhotoService
+    def forbidden(*args,**kwargs):raise AssertionError('Guest must use the checked proxy')
+    monkeypatch.setattr(PhotoService,'signed_access_url',forbidden)
+    for suffix in ['', '/thumbnail']:
+        assert client.get(f'/api/photos/{pid}{suffix}?access={TOKEN}',headers={'Authorization':'unrecognized'}).status_code==200

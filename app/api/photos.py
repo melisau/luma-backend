@@ -162,7 +162,7 @@ def get_photo(
         if not token:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Erişim reddedildi.")
         photo = photos.get_photo_for_event(db, photo_id, token)
-    signed = photos.signed_access_url(photo, thumbnail=False) if authorization else None
+    signed = photos.signed_access_url(photo, thumbnail=False) if authorization and authorization.startswith("Bearer ") else None
     if signed:
         return SignedPhotoResponse(url=signed, expires_in=get_settings().signed_url_expiry_seconds)
 
@@ -197,7 +197,7 @@ def get_photo_thumbnail(
         if not token:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Erişim reddedildi.")
         photo = photos.get_photo_for_event(db, photo_id, token)
-    signed = photos.signed_access_url(photo, thumbnail=True) if authorization else None
+    signed = photos.signed_access_url(photo, thumbnail=True) if authorization and authorization.startswith("Bearer ") else None
     if signed:
         return SignedPhotoResponse(url=signed, expires_in=get_settings().signed_url_expiry_seconds)
 
