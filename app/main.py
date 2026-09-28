@@ -98,17 +98,17 @@ async def lifespan(app: FastAPI):
     async def cleanup_loop():
         from app.services.memory_retention import purge_expired_memories
         while True:
-            await asyncio.sleep(max(60,get_settings().memory_cleanup_interval_seconds))
             try:
                 result=await run_in_threadpool(purge_expired_memories)
                 if any(result.values()):logger.info('Expired memories removed: %s',result)
             except Exception:logger.exception('Memory cleanup cycle failed; will retry')
+            await asyncio.sleep(max(60,get_settings().memory_cleanup_interval_seconds))
     async def reminder_loop():
         from app.services.reminder_service import send_due_reminders
         while True:
-            await asyncio.sleep(60)
             try: await run_in_threadpool(send_due_reminders)
             except Exception: logger.exception('RSVP reminder cycle failed; will retry')
+            await asyncio.sleep(60)
     task=asyncio.create_task(cleanup_loop()) if get_settings().memory_cleanup_enabled else None
     reminder_task=asyncio.create_task(reminder_loop())
     try:

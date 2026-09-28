@@ -228,6 +228,8 @@ def invitation_to_public(
     from app.schemas.invitation import InvitationPublic
 
     return InvitationPublic(
+        presentation=event.presentation or {},
+        visual_layers=[{**layer, "src": f"/api/events/{event.private_token}/visual-assets/{layer['id']}"} for layer in (event.visual_layers or [])],
         name=event.name,
         slug=event.slug,
         event_date=event.event_date,
@@ -242,6 +244,7 @@ def invitation_to_public(
         memory_text=event.memory_text or "",
         language=event.language,
         design_theme=event.design_theme,
+        palette=event.palette or {},
         memory_cover_url=memory_cover_url,
         opening_style=event.opening_style,
         address=event.address,
@@ -251,6 +254,7 @@ def invitation_to_public(
 
         envelope_color=event.envelope_color,
         seal_color=event.seal_color,
+        ribbon_color=event.ribbon_color,
         paper_color=event.paper_color,
         envelope_texture=event.envelope_texture,
         envelope_pattern=event.envelope_pattern,
@@ -264,6 +268,13 @@ def invitation_to_public(
 
 def update_invitation_admin(db: Session, event: Event, payload: InvitationUpdateAdmin) -> Event:
     data = payload.model_dump(exclude_unset=True)
+    removed_assets = []
+    if "visual_layers" in data:
+        ids = [layer["id"] for layer in data["visual_layers"]]
+        if len(ids) != len(set(ids)) or any(asset_id not in (event.visual_assets or []) for asset_id in ids):
+            raise HTTPException(status_code=400, detail="Görsel katmanları bu etkinliğe ait olmalı ve tekrarlanmamalı.")
+        removed_assets = [asset_id for asset_id in (event.visual_assets or []) if asset_id not in ids]
+        event.visual_assets = ids
     text_fields = {"venue", "city", "tagline", "story_title", "story_text", "guest_note", "signature_text", "memory_title", "memory_text"}
     for key, value in data.items():
         if key in text_fields and isinstance(value, str):
@@ -274,6 +285,13 @@ def update_invitation_admin(db: Session, event: Event, payload: InvitationUpdate
             setattr(event, key, value)
     db.commit()
     db.refresh(event)
+    if removed_assets:
+        from app.services.storage import get_storage
+        for asset_id in removed_assets:
+            try:
+                get_storage().delete(f"events/{event.id}/visual-assets/{asset_id}.webp")
+            except Exception:
+                pass
     return event
 
 

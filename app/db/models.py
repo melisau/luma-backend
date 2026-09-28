@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -51,6 +51,11 @@ class AdminUser(Base):
 
 
 class Event(Base):
+    presentation: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+    visual_layers: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    visual_assets: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    palette: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, server_default="{}")
+    palette: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, server_default="{}")
     signature_text: Mapped[str] = mapped_column(String(255), default="", server_default="")
     memory_title: Mapped[str] = mapped_column(String(255), default="Gözünden bizim hikâyemiz.", server_default="Gözünden bizim hikâyemiz.")
     memory_text: Mapped[str] = mapped_column(Text, default="O gece yakaladığın en güzel anları bizimle paylaş. Her kare, yıllarca saklayacağımız bir hatıraya dönüşsün.", server_default="")
@@ -79,8 +84,9 @@ class Event(Base):
     event_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     venue: Mapped[str] = mapped_column(String(255), default="")
     city: Mapped[str] = mapped_column(String(255), default="")
-    envelope_color: Mapped[str] = mapped_column(String(7), default="#e9dcc4", server_default="#e9dcc4")
-    seal_color: Mapped[str] = mapped_column(String(7), default="#873f43", server_default="#873f43")
+    envelope_color: Mapped[str] = mapped_column(String(7), default="#25463B", server_default="#25463B")
+    ribbon_color: Mapped[str] = mapped_column(String(7), default="#718CA2", server_default="#718CA2")
+    seal_color: Mapped[str] = mapped_column(String(7), default="#C9AA78", server_default="#C9AA78")
     paper_color: Mapped[str] = mapped_column(String(7), default="#fffdf7", server_default="#fffdf7")
     envelope_texture: Mapped[str] = mapped_column(String(20), default="linen", server_default="linen")
     envelope_pattern: Mapped[str] = mapped_column(String(20), default="plain", server_default="plain")

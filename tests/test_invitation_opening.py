@@ -30,3 +30,8 @@ def test_reference_patterns_persist(client,admin_headers):
         response=client.patch(url,headers=admin_headers,json={'envelope_pattern':pattern})
         assert response.status_code==200
         assert client.get(f'/api/events/{TOKEN}/invitation').json()['envelope_pattern']==pattern
+
+def test_original_photographic_seal_persists(client,admin_headers):
+    url=f'/api/admin/events/{TOKEN}/invitation'
+    assert client.patch(url,headers=admin_headers,json={'seal_motif':'original'}).status_code==200
+    assert client.get(f'/api/events/{TOKEN}/invitation').json()['seal_motif']=='original'

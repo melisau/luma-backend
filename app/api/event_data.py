@@ -48,6 +48,23 @@ from app.core.config import get_settings
 
 router = APIRouter(tags=["event-data"])
 
+@router.post("/admin/events/{event_token}/invitation/visual-assets")
+def upload_visual_asset(event_token: str, file: Annotated[UploadFile, File()], db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    from app.services.visual_asset_service import upload_asset
+    event = get_admin_event_or_404(db, event_token, admin.id)
+    return upload_asset(db, event, file)
+
+@router.get("/events/{event_token}/visual-assets/{asset_id}")
+def get_visual_asset(event_token: str, asset_id: str, db: Session = Depends(get_db)):
+    from app.services.visual_asset_service import asset_key
+    from app.services.storage import get_storage
+    event = get_event_by_token(db, event_token)
+    try:
+        data = get_storage().get_bytes(asset_key(event, asset_id))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Görsel bulunamadı.")
+    return Response(data, media_type="image/webp", headers={"Cache-Control": "private, max-age=3600"})
+
 
 def get_cover_service() -> InvitationCoverService:
     return InvitationCoverService()

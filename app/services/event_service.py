@@ -161,6 +161,11 @@ def delete_event_admin(db: Session, event: Event) -> None:
     from app.services.storage import get_storage
 
     storage = get_storage()
+    for asset_id in (event.visual_assets or []):
+        try:
+            storage.delete(f"events/{event.id}/visual-assets/{asset_id}.webp")
+        except Exception:
+            pass
     for photo in list(event.photos):
         try:
             storage.delete(photo.storage_key_original)

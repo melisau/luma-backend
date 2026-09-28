@@ -1,6 +1,6 @@
 # Luma üretim işletimi
 
-Railway servisinin kök dizini `luma-backend` olmalıdır. PostgreSQL ve özel S3/R2 kovası oluşturulduktan sonra `.env.production.example` içindeki değerler Railway Variables alanına girilir. `ENVIRONMENT=production` eksik veya güvensiz yapılandırmada uygulamanın başlamasını durdurur.
+Seçilen ücretsiz mimari Koyeb Web Service, Neon PostgreSQL, Cloudflare Pages ve özel Cloudflare R2 kovasından oluşur. Kurulum sırası ve panel ayarları `KOYEB_DEPLOYMENT.md` dosyasındadır. `.env.production.example` içindeki değerler Koyeb Environment variables and secrets alanına girilir. `ENVIRONMENT=production` eksik veya güvensiz yapılandırmada uygulamanın başlamasını durdurur.
 
 Dağıtım öncesi geçiş:
 

@@ -24,6 +24,11 @@ def get_db() -> Generator[Session, None, None]:
 
 
 EVENT_COLUMN_MIGRATIONS: dict[str, str] = {
+    "presentation": "JSON NOT NULL DEFAULT '{}'",
+    "visual_layers": "JSON NOT NULL DEFAULT '[]'",
+    "visual_assets": "JSON NOT NULL DEFAULT '[]'",
+    "ribbon_color": "VARCHAR(7) NOT NULL DEFAULT '#718CA2'",
+    "palette": "JSON NOT NULL DEFAULT '{}'",
     "address": "TEXT NOT NULL DEFAULT ''",
     "transport_notes": "TEXT NOT NULL DEFAULT ''",
     "contact_info": "TEXT NOT NULL DEFAULT ''",

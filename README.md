@@ -63,7 +63,7 @@ To serve the frontend from the same port in the monorepo workspace, keep `SERVE_
 ### With a separate frontend
 
 1. Run the backend on port `8000`.
-2. Point the frontend `js/config.local.js` at the API base URL.
+2. Point the frontend `js/config.runtime.js` at the API base URL.
 3. Add the frontend origin to `FRONTEND_ORIGINS` in `.env`.
 
 ## Environment variables
@@ -174,6 +174,8 @@ The API service waits until the PostgreSQL healthcheck passes (`depends_on` + `c
 
 ## Production checklist
 
+Selected deployment stack: Koyeb Web Service + Neon PostgreSQL + Cloudflare R2, with the frontend on Cloudflare Pages. See [`KOYEB_DEPLOYMENT.md`](KOYEB_DEPLOYMENT.md) for the exact setup.
+
 - [ ] `SECRET_KEY` — generate with `openssl rand -hex 32`
 - [ ] `ADMIN_PASSWORD` — change the default value
 - [ ] `DATABASE_URL` — managed PostgreSQL
@@ -241,3 +243,9 @@ An owner may PATCH `memory_delete_at` with `confirm_memory_deletion=true`. A new
 While the API runs, the background job checks hourly (`MEMORY_CLEANUP_ENABLED`, `MEMORY_CLEANUP_INTERVAL_SECONDS`, minimum interval 60 seconds). It deletes original/thumbnail objects and photo/message records only for explicitly scheduled events. Failed storage deletes preserve their records for retry. Completed policies are marked to avoid repeated work. PostgreSQL row locks coordinate workers and uploads; use one worker with SQLite. A stopped API does not run cleanup; it resumes on the next interval after startup.
 
 RSVP guests, invitation content, invitation cover/music, and activity records remain. This is application memory cleanup, not complete personal-data erasure. Production S3 versioning, provider backups and lifecycle expiration require a separate storage policy.
+
+## Invitation visual layers
+
+Migration `20260928_0020` adds `visual_layers` and `visual_assets` JSON fields without changing existing invitation data. Authenticated event editors upload assets through `POST /api/admin/events/{token}/invitation/visual-assets`; public reads use the event access checks at `/api/events/{token}/visual-assets/{id}`. Uploads accept JPEG/PNG/WebP up to 5 MB and 40 megapixels, normalize EXIF orientation, resize to 2400 pixels and encode WebP while preserving transparency. Invitation PATCH accepts up to 12 owned asset IDs with placement/frame/motion settings. Removed assets are cleaned after the metadata commit. Up to 32 staged assets are retained per event; replacing/removing layers cleans unused uploads at the next save. URLs supplied by clients are not persisted.
+
+Migration `20260928_0021` adds optional `presentation` JSON metadata. Invitation GET/PATCH validate paper style, texture, target and HEX colors, as well as exhibition layout and two/three columns. Defaults preserve the previous appearance; omitting presentation in a PATCH preserves saved settings.
