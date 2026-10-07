@@ -74,14 +74,22 @@ def seed_database() -> None:
 def mount_frontend(app: FastAPI, frontend_dir) -> None:
     @app.get("/e/{event_token}")
     def public_invitation(event_token: str):
-        return FileResponse(frontend_dir / "index.html", headers=PRIVATE_HEADERS)
+        return FileResponse(frontend_dir / "app.html", headers=PRIVATE_HEADERS)
 
     @app.get("/e/{event_token}/upload")
     def public_upload_invitation(event_token: str):
-        return FileResponse(frontend_dir / "index.html", headers=PRIVATE_HEADERS)
+        return FileResponse(frontend_dir / "app.html", headers=PRIVATE_HEADERS)
+
+    @app.get("/app.html")
+    def invitation_editor():
+        return FileResponse(frontend_dir / "app.html")
+
+    @app.get("/landing.html")
+    def landing_alias():
+        return FileResponse(frontend_dir / "index.html")
 
     @app.get("/")
-    def admin_panel():
+    def landing_page():
         return FileResponse(frontend_dir / "index.html")
 
     app.mount("/assets", StaticFiles(directory=frontend_dir / "assets"), name="assets")

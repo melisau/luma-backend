@@ -9,6 +9,9 @@ PaletteKey = Literal["background", "text", "heading", "hero_text", "details_back
 Palette = dict[PaletteKey, Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]]
 
 class InvitationPresentation(BaseModel):
+    editor_saved: bool = False
+    appearance_confirmed: bool = False
+    colors_confirmed: bool = False
     opening_hand: Literal["gloved", "witch"] = "gloved"
     button_radius: int | None = Field(default=None, ge=0, le=999)
     opening_background_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
@@ -85,7 +88,7 @@ class InvitationPublic(EventDateModel):
 
 class InvitationUpdateAdmin(EventDateModel):
     presentation: InvitationPresentation = Field(default_factory=InvitationPresentation)
-    visual_layers: list[VisualLayer] = Field(default_factory=list, max_length=12)
+    visual_layers: list[VisualLayer] = Field(default_factory=list, max_length=32)
     palette: Palette = Field(default_factory=dict)
     envelope_color: str = Field(default="#25463B", pattern=r"^#[0-9a-fA-F]{6}$")
     ribbon_color: str = Field(default="#718CA2", pattern=r"^#[0-9a-fA-F]{6}$")

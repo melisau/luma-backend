@@ -228,7 +228,7 @@ def invitation_to_public(
     from app.schemas.invitation import InvitationPublic
 
     return InvitationPublic(
-        presentation=event.presentation or {},
+        presentation={**(event.presentation or {}), "editor_saved": bool((event.presentation or {}).get("editor_saved", bool(event.presentation)))},
         visual_layers=[{**layer, "src": f"/api/events/{event.private_token}/visual-assets/{layer['id']}"} for layer in (event.visual_layers or [])],
         name=event.name,
         slug=event.slug,

@@ -27,7 +27,7 @@ def test_transparent_layers_upload_persist_access_and_cleanup(client, admin_head
     assert client.patch(url, headers=admin_headers, json={"visual_layers": [{**layer, "id": "f" * 32}]}).status_code == 400
     assert client.patch(url, headers=admin_headers, json={"visual_layers": [{**layer, "motion": "script"}]}).status_code == 422
     assert client.patch(url, headers=admin_headers, json={"visual_layers": [{**layer, "placement": "outside"}]}).status_code == 422
-    assert client.patch(url, headers=admin_headers, json={"visual_layers": [layer] * 13}).status_code == 422
+    assert client.patch(url, headers=admin_headers, json={"visual_layers": [layer] * 33}).status_code == 422
     for position in ["invitation-background", "opening-background", "story-background", "details-background", "memories-background", "exhibition-background", "countdown-background", "footer-background"]:
         assert client.patch(url, headers=admin_headers, json={"visual_layers": [{**layer, "position": position}]}).status_code == 200
         assert client.get(f"/api/events/{TOKEN}/invitation").json()["visual_layers"][0]["position"] == position
