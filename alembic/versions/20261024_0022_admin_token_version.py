@@ -9,7 +9,10 @@ depends_on = None
 
 
 def upgrade():
-    columns = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("admin_users")}
+    inspector = sa.inspect(op.get_bind())
+    if not inspector.has_table("admin_users"):
+        return
+    columns = {column["name"] for column in inspector.get_columns("admin_users")}
     if "token_version" not in columns:
         op.add_column(
             "admin_users",
@@ -18,7 +21,10 @@ def upgrade():
 
 
 def downgrade():
-    columns = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("admin_users")}
+    inspector = sa.inspect(op.get_bind())
+    if not inspector.has_table("admin_users"):
+        return
+    columns = {column["name"] for column in inspector.get_columns("admin_users")}
     if "token_version" in columns:
         with op.batch_alter_table("admin_users") as batch:
             batch.drop_column("token_version")
