@@ -1,6 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -41,7 +43,8 @@ class Settings(BaseSettings):
     frontend_origins: str = "http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:8000,http://localhost:8000"
 
     admin_email: str = "admin@example.com"
-    admin_password: str = "change-me-admin"
+    admin_password: SecretStr | None = None
+    bootstrap_admin_enabled: bool = False
 
     seed_event_name: str = "Örnek Etkinlik"
     seed_event_token: str | None = None
@@ -54,21 +57,34 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_use_tls: bool = True
-    environment: str = "development"
+    environment: Literal["development", "test", "production"] = "production"
     sentry_dsn: str | None = None
     rate_limit_backend: str = "memory"
 
     def validate_production(self) -> None:
-        if self.environment != "production": return
-        errors=[]
-        if self.secret_key in {"change-me-in-production", "change-me-use-openssl-rand-hex-32"} or len(self.secret_key)<32: errors.append("SECRET_KEY en az 32 karakter olmalı")
-        if not self.database_url.startswith("postgresql"): errors.append("DATABASE_URL PostgreSQL olmalı")
-        if self.storage_backend != "s3" or not all((self.storage_endpoint,self.storage_bucket,self.storage_access_key_id,self.storage_secret_access_key)): errors.append("özel S3/R2 ayarları eksik")
-        if not self.public_base_url or not self.public_base_url.startswith("https://"): errors.append("PUBLIC_BASE_URL HTTPS olmalı")
-        if any(not origin.startswith("https://") for origin in self.cors_origins): errors.append("FRONTEND_ORIGINS yalnızca HTTPS olmalı")
-        if self.rate_limit_backend != "database": errors.append("RATE_LIMIT_BACKEND=database olmalı")
-        if self.email_backend == "smtp" and not self.smtp_host: errors.append("SMTP_HOST eksik")
-        if errors: raise RuntimeError("Üretim yapılandırması geçersiz: " + "; ".join(errors))
+        if self.environment != "production":
+            return
+        errors = []
+        if self.secret_key in {"change-me-in-production", "change-me-use-openssl-rand-hex-32"} or len(self.secret_key) < 32:
+            errors.append("SECRET_KEY en az 32 karakter olmalı")
+        if not self.database_url.startswith("postgresql"):
+            errors.append("DATABASE_URL PostgreSQL olmalı")
+        if self.storage_backend != "s3" or not all((self.storage_endpoint, self.storage_bucket, self.storage_access_key_id, self.storage_secret_access_key)):
+            errors.append("özel S3/R2 ayarları eksik")
+        if not self.public_base_url or not self.public_base_url.startswith("https://"):
+            errors.append("PUBLIC_BASE_URL HTTPS olmalı")
+        if any(not origin.startswith("https://") for origin in self.cors_origins):
+            errors.append("FRONTEND_ORIGINS yalnızca HTTPS olmalı")
+        if self.rate_limit_backend != "database":
+            errors.append("RATE_LIMIT_BACKEND=database olmalı")
+        if self.email_backend != "smtp" or not self.smtp_host:
+            errors.append("EMAIL_BACKEND=smtp ve SMTP_HOST zorunlu")
+        if self.bootstrap_admin_enabled:
+            errors.append("BOOTSTRAP_ADMIN_ENABLED üretimde kapalı olmalı; ilk yönetici app.bootstrap_admin komutuyla oluşturulmalı")
+        if self.admin_password is not None:
+            errors.append("ADMIN_PASSWORD üretimde desteklenmiyor; ilk yönetici app.bootstrap_admin komutuyla oluşturulmalı")
+        if errors:
+            raise RuntimeError("Üretim yapılandırması geçersiz: " + "; ".join(errors))
 
     serve_frontend: bool = True
     frontend_path: Path = ROOT.parent / "luma-frontend"

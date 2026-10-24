@@ -31,7 +31,7 @@ Create a Web Service from this GitHub repository with these settings:
 - Route: `/`
 - Health check: HTTP `GET /health`
 
-Copy every variable from `.env.production.example` into the Koyeb environment. Store `SECRET_KEY`, `DATABASE_URL`, R2 credentials, SMTP password, and `ADMIN_PASSWORD` as secrets.
+Copy every variable from `.env.production.example` into the Koyeb environment. Store `SECRET_KEY`, `DATABASE_URL`, R2 credentials, and SMTP password as secrets. Keep `BOOTSTRAP_ADMIN_ENABLED=false`; production does not use an administrator password environment variable.
 
 Set these URL values after Cloudflare Pages creates the frontend address:
 
@@ -48,10 +48,12 @@ Use the `luma-frontend` repository and follow its README deployment settings. Se
 
 After both services are live, update Koyeb with the final Pages/custom-domain URL and redeploy.
 
+Application logs use route templates and omit access-code and invitation tokens. Configure platform, proxy, and Sentry logging to redact query strings and `/e/{event_token}` path segments too; those access logs are outside the application middleware.
+
 ## 5. Verification
 
 1. Open the Koyeb `/health` endpoint and verify database and storage are `ok` or configured.
-2. Register a fresh administrator instead of using the seed account.
+2. Run `ENVIRONMENT=production python -m app.bootstrap_admin` once in the backend environment. The command refuses to overwrite an existing administrator and prints a randomly generated password once; save it in a password manager.
 3. Create an event and open its invitation from a private mobile browser.
 4. Submit an RSVP, guestbook message, and phone photo.
 5. Approve the photo and verify its thumbnail and full preview.

@@ -10,7 +10,8 @@ def send_email(to: str, subject: str, body: str) -> bool:
     settings = get_settings()
     if settings.email_backend == "disabled": return False
     if settings.email_backend == "console":
-        logger.info("Email to=%s subject=%s body=%s", to, subject, body)
+        # Email bodies contain password-reset and verification credentials.
+        logger.info("Email queued to=%s subject=%s", to, subject)
         return True
     if settings.email_backend != "smtp" or not settings.smtp_host:
         raise RuntimeError("SMTP e-posta yapılandırması eksik.")

@@ -5,6 +5,9 @@ __pycache__/
 venv/
 .env
 planner.db
+*.db
+*.sqlite
+*.sqlite3
 private_uploads/
 uploads/
 .pytest_cache/

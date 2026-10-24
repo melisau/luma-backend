@@ -43,6 +43,7 @@ class AdminUser(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 

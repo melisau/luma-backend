@@ -51,7 +51,7 @@ cp .env.example .env
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-On first startup, a seed admin user and demo event are created (see `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env`).
+Local startup seeds an admin and a demo event only when `BOOTSTRAP_ADMIN_ENABLED=true` and an explicit `ADMIN_PASSWORD` is configured in the development `.env`. Production never seeds a built-in account; create the first administrator once with `ENVIRONMENT=production python -m app.bootstrap_admin` after configuring the production environment.
 
 | Endpoint | Description |
 |----------|-------------|
@@ -80,8 +80,9 @@ Full list: [`.env.example`](.env.example). Production template: [`.env.productio
 | `SERVE_FRONTEND` | Serve frontend static files | `true` (dev) |
 | `FRONTEND_ORIGINS` | CORS allowed origins (comma-separated) | localhost |
 | `PUBLIC_BASE_URL` | Public URL for QR and upload links | — |
-| `ADMIN_EMAIL` | Seed admin email | `admin@example.com` |
-| `ADMIN_PASSWORD` | Seed admin password | `change-me-admin` |
+| `ADMIN_EMAIL` | Local development seed email | `admin@example.com` |
+| `ADMIN_PASSWORD` | Local development seed password; never used in production | unset |
+| `BOOTSTRAP_ADMIN_ENABLED` | Permit local development seed only | `false` |
 | `UPLOADS_PER_MINUTE` | Upload rate limit per IP/event | `10` |
 | `LOGINS_PER_MINUTE` | Admin login attempt limit | `10` |
 | `MESSAGES_PER_MINUTE` | Guestbook message rate limit | `20` |
@@ -177,7 +178,7 @@ The API service waits until the PostgreSQL healthcheck passes (`depends_on` + `c
 Selected deployment stack: Koyeb Web Service + Neon PostgreSQL + Cloudflare R2, with the frontend on Cloudflare Pages. See [`KOYEB_DEPLOYMENT.md`](KOYEB_DEPLOYMENT.md) for the exact setup.
 
 - [ ] `SECRET_KEY` — generate with `openssl rand -hex 32`
-- [ ] `ADMIN_PASSWORD` — change the default value
+- [ ] Create the first production administrator once with `python -m app.bootstrap_admin`; store the generated password securely
 - [ ] `DATABASE_URL` — managed PostgreSQL
 - [ ] `STORAGE_BACKEND=s3` — private bucket (R2/S3)
 - [ ] `SERVE_FRONTEND=false` — frontend on a separate CDN/domain
@@ -185,6 +186,16 @@ Selected deployment stack: Koyeb Web Service + Neon PostgreSQL + Cloudflare R2, 
 - [ ] `PUBLIC_BASE_URL` — correct domain for QR and upload links
 - [ ] HTTPS — all public traffic
 - [ ] Tune rate limits for expected traffic
+
+### Immediate rollout steps
+
+1. Back up the production database before deploying. Do not use the tracked `browser-test.db`; it has been removed from Git going forward, while older Git commits still contain its historical copy.
+2. Deploy the backend changes and configure `ENVIRONMENT=production`, a newly generated `SECRET_KEY`, Neon `DATABASE_URL`, private R2 credentials, HTTPS frontend URLs, `RATE_LIMIT_BACKEND=database`, and working SMTP settings. Keep `BOOTSTRAP_ADMIN_ENABLED=false` and do not set `ADMIN_PASSWORD` in production.
+3. Let the app start once so `init_db()` applies the new Alembic migration. Existing administrator JWTs do not contain the new session version and will be rejected; administrators must sign in again.
+4. If the production database has no administrator yet, run `python -m app.bootstrap_admin` once from a secure shell that has the same production environment variables and network access to Neon. Enter the administrator email when prompted and save the generated password in a password manager. The command refuses to replace an existing administrator.
+5. Verify `/health`, administrator sign-in, event creation, invitation access, RSVP, email delivery, and photo upload from a private mobile browser. Confirm platform/proxy access logs redact query strings and `/e/{event_token}` paths.
+
+Do not claim existing accounts are safe until their actual password and deployment state have been checked. If a real invitation token was recorded in historical logs, rotate that invitation token. Rewriting Git history to remove the old database is a separate operation; the current `.gitignore` and untracking change do not remove old commits.
 
 ## Tests and CI
 

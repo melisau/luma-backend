@@ -41,13 +41,15 @@ PRIVATE_HEADERS = {
 
 def seed_database() -> None:
     settings = get_settings()
+    if not settings.admin_password:
+        raise RuntimeError("Yerel seed için ADMIN_PASSWORD ayarlanmalı.")
     db: Session = db_module.SessionLocal()
     try:
         admin = db.query(AdminUser).filter(AdminUser.email == settings.admin_email.lower()).one_or_none()
         if not admin:
             admin = AdminUser(
                 email=settings.admin_email.lower(),
-                password_hash=hash_password(settings.admin_password),
+                password_hash=hash_password(settings.admin_password.get_secret_value()),
             )
             db.add(admin)
             db.flush()
@@ -102,7 +104,8 @@ def mount_frontend(app: FastAPI, frontend_dir) -> None:
 async def lifespan(app: FastAPI):
     get_settings().validate_production()
     init_db()
-    seed_database()
+    if get_settings().environment != "production" and get_settings().bootstrap_admin_enabled:
+        seed_database()
     async def cleanup_loop():
         from app.services.memory_retention import purge_expired_memories
         while True:
@@ -158,7 +161,9 @@ async def privacy_headers_middleware(request: Request, call_next):
     request_id=request.headers.get("X-Request-ID") or str(uuid.uuid4());started=time.perf_counter()
     response = await call_next(request)
     response.headers["X-Request-ID"]=request_id
-    logger.info("request method=%s path=%s status=%s duration_ms=%.1f request_id=%s",request.method,request.url.path,response.status_code,(time.perf_counter()-started)*1000,request_id)
+    route = request.scope.get("route")
+    safe_route = getattr(route, "path", "[unmatched]")
+    logger.info("request method=%s route=%s status=%s duration_ms=%.1f request_id=%s",request.method,safe_route,response.status_code,(time.perf_counter()-started)*1000,request_id)
     if request.url.path.startswith(("/e/", "/api/")):
         for key, value in PRIVATE_HEADERS.items():
             response.headers.setdefault(key, value)
@@ -167,7 +172,9 @@ async def privacy_headers_middleware(request: Request, call_next):
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled error on %s", request.url.path)
+    route = request.scope.get("route")
+    safe_route = getattr(route, "path", "[unmatched]")
+    logger.error("Unhandled request error route=%s type=%s", safe_route, type(exc).__name__)
     return JSONResponse(
         status_code=500,
         content={"detail": "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin."},

@@ -1,6 +1,7 @@
 import hashlib
 import io
 import uuid
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +21,10 @@ try:
     pillow_heif.register_heif_opener()
 except ImportError:
     pillow_heif = None
+
+MAX_INPUT_PIXELS = 20_000_000
+MAX_INPUT_FRAMES = 50
+Image.MAX_IMAGE_PIXELS = MAX_INPUT_PIXELS
 
 ALLOWED_MIME = {
     "image/jpeg": ".jpg",
@@ -99,9 +104,38 @@ class PhotoService:
 
     def _open_image(self, raw: bytes) -> Image.Image:
         try:
-            image = Image.open(io.BytesIO(raw))
-            image.load()
-        except UnidentifiedImageError as exc:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                image = Image.open(io.BytesIO(raw))
+                frame_count = getattr(image, "n_frames", 1)
+                if frame_count > MAX_INPUT_FRAMES:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail="Görsel çok fazla kare içeriyor.",
+                    )
+                total_pixels = 0
+                for frame_index in range(frame_count):
+                    image.seek(frame_index)
+                    width, height = image.size
+                    if width <= 0 or height <= 0:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Geçersiz görsel boyutları.",
+                        )
+                    total_pixels += width * height
+                    if total_pixels > MAX_INPUT_PIXELS:
+                        raise HTTPException(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail="Görsel piksel sınırını aşıyor.",
+                        )
+                image.seek(0)
+                image.load()
+        except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Görsel piksel sınırını aşıyor.",
+            ) from exc
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Geçersiz görsel dosyası.",

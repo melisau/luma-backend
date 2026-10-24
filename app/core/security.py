@@ -23,20 +23,27 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_admin_token(subject: str) -> str:
+def create_admin_token(subject: str, token_version: int) -> str:
     settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(hours=12)
-    payload = {"sub": subject, "exp": expire, "scope": "admin"}
+    expire = datetime.now(timezone.utc) + timedelta(minutes=30)
+    payload = {"sub": subject, "ver": token_version, "exp": expire, "scope": "admin"}
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
-def decode_admin_token(token: str) -> str | None:
+def decode_admin_token(token: str) -> tuple[str, int] | None:
     settings = get_settings()
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
-        if payload.get("scope") != "admin":
+        subject = payload.get("sub")
+        version = payload.get("ver")
+        if (
+            payload.get("scope") != "admin"
+            or not isinstance(subject, str)
+            or not subject
+            or type(version) is not int
+        ):
             return None
-        return payload.get("sub")
+        return subject, version
     except JWTError:
         return None
 

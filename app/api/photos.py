@@ -51,8 +51,15 @@ def _frontend_link(kind: str, token: str) -> str:
     base=(get_settings().public_base_url or "http://localhost:5500").rstrip("/")
     return f"{base}/?{kind}_token={token}"
 
-def _consume_token(db: Session, raw: str, purpose: str) -> AccountToken:
-    item=db.query(AccountToken).filter(AccountToken.token_hash==hashlib.sha256(raw.encode()).hexdigest(),AccountToken.purpose==purpose,AccountToken.used_at.is_(None)).one_or_none()
+def _consume_token(db: Session, raw: str, purpose: str, *, lock: bool = False) -> AccountToken:
+    query = db.query(AccountToken).filter(
+        AccountToken.token_hash == hashlib.sha256(raw.encode()).hexdigest(),
+        AccountToken.purpose == purpose,
+        AccountToken.used_at.is_(None),
+    )
+    if lock:
+        query = query.with_for_update()
+    item = query.one_or_none()
     if not item: raise HTTPException(status_code=400,detail="Bağlantı geçersiz veya daha önce kullanılmış.")
     expiry=item.expires_at if item.expires_at.tzinfo else item.expires_at.replace(tzinfo=timezone.utc)
     if expiry<datetime.now(timezone.utc): raise HTTPException(status_code=400,detail="Bağlantının süresi dolmuş.")
@@ -112,11 +119,12 @@ def _resolve_admin(authorization: str | None, db: Session) -> AdminUser:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Yönetici oturumu gerekli.")
     token = authorization.removeprefix("Bearer ").strip()
-    email = decode_admin_token(token)
-    if not email:
+    claims = decode_admin_token(token)
+    if not claims:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Yönetici oturumu geçersiz.")
-    admin = db.query(AdminUser).filter(AdminUser.email == email).one_or_none()
-    if not admin:
+    admin_id, token_version = claims
+    admin = db.query(AdminUser).filter(AdminUser.id == admin_id).one_or_none()
+    if not admin or admin.token_version != token_version:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Yönetici oturumu geçersiz.")
     return admin
 
@@ -262,7 +270,7 @@ def admin_register(payload: AdminRegisterRequest, request: Request, db: Session 
     try: send_email(admin.email,"Luma e-posta doğrulama",f"E-posta adresinizi doğrulayın: {_frontend_link('verify',raw)}")
     except Exception: logger.exception("Verification email failed")
     return AdminLoginResponse(
-        access_token=create_admin_token(admin.email),
+        access_token=create_admin_token(admin.id, admin.token_version),
         email=admin.email,
         display_name=admin.display_name,
     )
@@ -276,7 +284,7 @@ def admin_login(payload: AdminLoginRequest, request: Request, db: Session = Depe
     if not admin or not verify_password(payload.password, admin.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geçersiz kimlik bilgileri.")
     return AdminLoginResponse(
-        access_token=create_admin_token(admin.email),
+        access_token=create_admin_token(admin.id, admin.token_version),
         email=admin.email,
         display_name=admin.display_name,
     )
@@ -315,6 +323,7 @@ def admin_change_password(
             detail="Yeni şifre mevcut şifreden farklı olmalı.",
         )
     admin.password_hash = hash_password(payload.new_password)
+    admin.token_version += 1
     db.commit()
 
 
@@ -345,7 +354,12 @@ def request_password_reset(payload: EmailRequest, request: Request, db: Session=
 
 @router.post("/admin/password-reset/confirm")
 def confirm_password_reset(payload: PasswordResetConfirm, db: Session=Depends(get_db)):
-    item=_consume_token(db,payload.token,"reset");item.admin.password_hash=hash_password(payload.new_password);item.used_at=datetime.now(timezone.utc);db.commit();return {"detail":"Parola güncellendi."}
+    item = _consume_token(db, payload.token, "reset", lock=True)
+    item.admin.password_hash = hash_password(payload.new_password)
+    item.admin.token_version += 1
+    item.used_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"detail": "Parola güncellendi."}
 
 @router.post("/admin/email-verification/request", status_code=202)
 def request_email_verification(db: Session=Depends(get_db), admin: AdminUser=Depends(get_current_admin)):
