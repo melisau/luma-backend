@@ -23,6 +23,7 @@ jobs:
 
       - name: Run tests
         env:
+          ENVIRONMENT: test
           SECRET_KEY: ci-test-secret-key
           ADMIN_EMAIL: admin@test.com
           ADMIN_PASSWORD: testpassword123
@@ -46,9 +47,11 @@ jobs:
       - name: Smoke test container
         run: |
           docker run -d --name luma-api -p 18000:8000 \
+            -e ENVIRONMENT=development \
             -e SECRET_KEY=ci-docker-secret \
             -e ADMIN_EMAIL=admin@test.com \
             -e ADMIN_PASSWORD=testpassword123 \
+            -e BOOTSTRAP_ADMIN_ENABLED=true \
             -e SERVE_FRONTEND=false \
             luma-backend:ci
           for i in $(seq 1 30); do

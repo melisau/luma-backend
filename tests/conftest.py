@@ -47,7 +47,7 @@ def client(tmp_path, monkeypatch):
         if not admin:
             admin = AdminUser(
                 email=settings.admin_email.lower(),
-                password_hash=hash_password(settings.admin_password),
+                password_hash=hash_password(settings.admin_password.get_secret_value()),
             )
             db.add(admin)
             db.flush()
