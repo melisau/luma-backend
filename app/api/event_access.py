@@ -39,6 +39,9 @@ def require_event_access(request: Request, db: Session=Depends(get_db)):
             event=db.query(Event).join(Photo).filter(Photo.id==photo_id).one_or_none()
             if event and not event.album_public:
                 raise HTTPException(status_code=404,detail='Fotoğraf bulunamadı.')
+    from app.services.rate_limit import owner_can_reach_guests
+    if event and not owner_can_reach_guests(event):
+        raise HTTPException(status_code=403,detail='Bu davetiye henüz yayında değil.')
     from app.services.memory_retention import memories_expired
     if event and memories_expired(event) and (path.startswith('/api/photos/') or path.rstrip('/').endswith(('/photos','/messages'))):
         raise HTTPException(status_code=410,detail='Bu etkinliğin anı saklama süresi doldu.')
