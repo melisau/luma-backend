@@ -1,9 +1,9 @@
 #!/bin/sh
-# Updates Luma Melisa on the shared VDS from GitHub and restarts only its own containers.
-# Usage: /opt/melisaluma/luma-backend/deploy/vds-deploy.sh [branch]   (default: main)
+# Updates Luma Event on the shared VDS from GitHub and restarts only its own containers.
+# Usage: /opt/lumaevent/luma-backend/deploy/vds-deploy.sh [branch]   (default: main)
 set -eu
 BRANCH="${1:-main}"
-ROOT=/opt/melisaluma
+ROOT=/opt/lumaevent
 
 for repo in luma-backend luma-frontend; do
   if [ ! -d "$ROOT/$repo/.git" ]; then

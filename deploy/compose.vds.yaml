@@ -1,15 +1,15 @@
-# Luma Melisa on the shared VDS (141.11.109.174), behind the shared Caddy
+# Luma Event on the shared VDS (141.11.109.174), behind the shared Caddy
 # (berkdev-proxy-caddy-1). Nothing here publishes a port; the shared Caddy
-# reaches melisaluma-api and melisaluma-storage over the berkdev-proxy network.
+# reaches lumaevent-api and lumaevent-storage over the berkdev-proxy network.
 #
 # Layout on the server:
-#   /opt/melisaluma/.env.vds        secrets (chmod 600, never in git)
-#   /opt/melisaluma/luma-backend    this repo
-#   /opt/melisaluma/luma-frontend   frontend repo
+#   /opt/lumaevent/.env.vds        secrets (chmod 600, never in git)
+#   /opt/lumaevent/luma-backend    this repo
+#   /opt/lumaevent/luma-frontend   frontend repo
 #
-# Deploy: /opt/melisaluma/luma-backend/deploy/vds-deploy.sh [branch]
+# Deploy: /opt/lumaevent/luma-backend/deploy/vds-deploy.sh [branch]
 
-name: melisaluma
+name: lumaevent
 
 x-env-file: &env-file
   env_file: ../../.env.vds
@@ -17,19 +17,19 @@ x-env-file: &env-file
 services:
   api:
     <<: *env-file
-    container_name: melisaluma-api
+    container_name: lumaevent-api
     build: ..
     restart: unless-stopped
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-production}
-      DATABASE_URL: postgresql+psycopg2://luma:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set}@melisaluma-db:5432/luma
+      DATABASE_URL: postgresql+psycopg2://luma:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set}@lumaevent-db:5432/luma
       PUBLIC_BASE_URL: https://${DOMAIN:?DOMAIN is not set}
       FRONTEND_ORIGINS: https://${DOMAIN}
       SERVE_FRONTEND: "true"
       FRONTEND_PATH: /app/frontend
       RATE_LIMIT_BACKEND: database
       STORAGE_BACKEND: s3
-      STORAGE_ENDPOINT: http://melisaluma-storage:8333
+      STORAGE_ENDPOINT: http://lumaevent-storage:8333
       STORAGE_PUBLIC_ENDPOINT: https://${DOMAIN}
       STORAGE_BUCKET: luma-private
       STORAGE_ACCESS_KEY_ID: luma-app
@@ -50,7 +50,7 @@ services:
         condition: service_completed_successfully
 
   db:
-    container_name: melisaluma-db
+    container_name: lumaevent-db
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -67,11 +67,11 @@ services:
       retries: 20
 
   backup:
-    container_name: melisaluma-backup
+    container_name: lumaevent-backup
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      PGHOST: melisaluma-db
+      PGHOST: lumaevent-db
       PGUSER: luma
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: luma
@@ -87,7 +87,7 @@ services:
 
   # Photo storage (S3-compatible). Only the API's key can read or write.
   storage:
-    container_name: melisaluma-storage
+    container_name: lumaevent-storage
     image: chrislusf/seaweedfs:3.97
     restart: unless-stopped
     environment:
@@ -99,7 +99,7 @@ services:
         mkdir -p /data /etc/seaweedfs
         printf '{"identities":[{"name":"luma","credentials":[{"accessKey":"luma-app","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' \
           "$$APP_SECRET" > /etc/seaweedfs/s3.json
-        exec weed server -dir=/data -ip=melisaluma-storage -ip.bind=0.0.0.0 -volume.max=0 \
+        exec weed server -dir=/data -ip=lumaevent-storage -ip.bind=0.0.0.0 -volume.max=0 \
           -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
     expose: ["8333"]
     volumes:
@@ -112,15 +112,15 @@ services:
       retries: 30
 
   storage-init:
-    container_name: melisaluma-storage-init
+    container_name: lumaevent-storage-init
     image: chrislusf/seaweedfs:3.97
     restart: "no"
     entrypoint: ["sh", "-c"]
     command:
       - |
         set -e
-        echo "s3.bucket.list" | weed shell -master=melisaluma-storage:9333 | grep -qw luma-private \
-          || echo "s3.bucket.create -name luma-private" | weed shell -master=melisaluma-storage:9333
+        echo "s3.bucket.list" | weed shell -master=lumaevent-storage:9333 | grep -qw luma-private \
+          || echo "s3.bucket.create -name luma-private" | weed shell -master=lumaevent-storage:9333
         echo "storage ready"
     networks: [default]
     depends_on:
