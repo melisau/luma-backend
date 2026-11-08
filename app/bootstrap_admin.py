@@ -1,5 +1,6 @@
 """Create the first production administrator with a one-time random password."""
 import secrets
+from datetime import datetime, timezone
 import sys
 
 from sqlalchemy.exc import IntegrityError
@@ -37,7 +38,8 @@ def main() -> int:
         if db.query(AdminUser.id).first():
             print("Yönetici hesabı zaten var; mevcut hesaplara dokunulmadı.", file=sys.stderr)
             return 1
-        db.add(AdminUser(email=email, password_hash=hash_password(password)))
+        # The operator typed this address on the server, so it counts as verified.
+        db.add(AdminUser(email=email, password_hash=hash_password(password), email_verified_at=datetime.now(timezone.utc)))
         db.commit()
     except IntegrityError:
         db.rollback()

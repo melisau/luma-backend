@@ -60,17 +60,27 @@ class S3CompatibleStorage(StorageBackend):
         access_key: str,
         secret_key: str,
         region: str,
+        public_endpoint: str | None = None,
     ):
         import boto3
+        from botocore.config import Config
 
         self.bucket = bucket
-        self.client = boto3.client(
-            "s3",
-            endpoint_url=endpoint,
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            region_name=region,
-        )
+        # Path-style URLs work on MinIO and R2 and keep signed links on one host.
+        config = Config(signature_version="s3v4", s3={"addressing_style": "path"})
+
+        def make_client(url: str):
+            return boto3.client(
+                "s3",
+                endpoint_url=url,
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                region_name=region,
+                config=config,
+            )
+
+        self.client = make_client(endpoint)
+        self.signing_client = make_client(public_endpoint) if public_endpoint else self.client
 
     def put_bytes(self, key: str, data: bytes, content_type: str) -> None:
         self.client.put_object(
@@ -88,7 +98,7 @@ class S3CompatibleStorage(StorageBackend):
         self.client.delete_object(Bucket=self.bucket, Key=key)
 
     def create_signed_url(self, key: str, expiry_seconds: int) -> str:
-        return self.client.generate_presigned_url(
+        return self.signing_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": self.bucket, "Key": key},
             ExpiresIn=expiry_seconds,
@@ -113,5 +123,6 @@ def get_storage() -> StorageBackend:
             access_key=settings.storage_access_key_id,
             secret_key=settings.storage_secret_access_key,
             region=settings.storage_region,
+            public_endpoint=settings.storage_public_endpoint,
         )
     return LocalPrivateStorage(settings.local_storage_path)

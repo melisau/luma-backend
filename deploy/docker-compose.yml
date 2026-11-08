@@ -1,0 +1,143 @@
+# Luma on a single VDS: Caddy -> Luma API (serves the frontend too) -> PostgreSQL,
+# photos in SeaweedFS under the same domain. Setup steps: deploy/README.md.
+#
+#   cd /opt/luma/luma-backend/deploy
+#   cp .env.example .env   # fill in the values
+#   docker compose up -d --build
+
+name: luma
+
+services:
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is not set}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is not set}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+  api:
+    build: ..
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg2://luma:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set}@db:5432/luma
+      PUBLIC_BASE_URL: https://${DOMAIN}
+      FRONTEND_ORIGINS: https://${DOMAIN}
+      SERVE_FRONTEND: "true"
+      FRONTEND_PATH: /app/frontend
+      RATE_LIMIT_BACKEND: database
+      STORAGE_BACKEND: s3
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://seaweedfs:8333}
+      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-https://${DOMAIN}}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-luma-private}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-luma-app}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY is not set}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+    # One process, so the reminder and cleanup loops run once. Caddy is the only
+    # thing that can reach this port, so its forwarded client IPs are trusted.
+    command: >-
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+      --proxy-headers --forwarded-allow-ips=*
+    volumes:
+      - ${FRONTEND_DIR:-../../luma-frontend}:/app/frontend:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+        required: false
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: luma
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: luma
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U luma -d luma"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Nightly pg_dump into ./backups, keeping the last BACKUP_KEEP_DAYS days.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: luma
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: luma
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+    entrypoint: ["sh", "/backup.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Photo storage (S3-compatible, data stays on this server).
+  # Leave "storage" out of COMPOSE_PROFILES to use Cloudflare R2 instead.
+  # Only the API's key can read or write; there is no anonymous access.
+  seaweedfs:
+    profiles: ["storage"]
+    image: chrislusf/seaweedfs:3.97
+    restart: unless-stopped
+    environment:
+      APP_KEY: ${STORAGE_ACCESS_KEY_ID:-luma-app}
+      APP_SECRET: ${STORAGE_SECRET_ACCESS_KEY}
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        mkdir -p /data /etc/seaweedfs
+        printf '{"identities":[{"name":"luma","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' \
+          "$$APP_KEY" "$$APP_SECRET" > /etc/seaweedfs/s3.json
+        exec weed server -dir=/data -ip=seaweedfs -ip.bind=0.0.0.0 -volume.max=0 \
+          -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+    volumes:
+      - storagedata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/healthz && wget -q -S -O /dev/null http://127.0.0.1:8333/ 2>&1 | grep -q 'HTTP/'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # Creates the private bucket on every start (idempotent).
+  storage-init:
+    profiles: ["storage"]
+    image: chrislusf/seaweedfs:3.97
+    restart: "no"
+    environment:
+      BUCKET: ${STORAGE_BUCKET:-luma-private}
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "s3.bucket.list" | weed shell -master=seaweedfs:9333 | grep -qw "$$BUCKET" \
+          || echo "s3.bucket.create -name $$BUCKET" | weed shell -master=seaweedfs:9333
+        echo "storage ready: bucket $$BUCKET"
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pgdata:
+  storagedata:

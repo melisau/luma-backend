@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     storage_access_key_id: str | None = None
     storage_secret_access_key: str | None = None
     storage_region: str = "auto"
+    # Address browsers use for signed photo links when the API reaches storage
+    # on an internal one (e.g. MinIO at http://minio:9000 behind Caddy).
+    storage_public_endpoint: str | None = None
 
     memory_cleanup_enabled: bool = True
     memory_cleanup_interval_seconds: int = 3600

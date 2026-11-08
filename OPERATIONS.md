@@ -1,6 +1,6 @@
 # Luma üretim işletimi
 
-Seçilen ücretsiz mimari Koyeb Web Service, Neon PostgreSQL, Cloudflare Pages ve özel Cloudflare R2 kovasından oluşur. Kurulum sırası ve panel ayarları `KOYEB_DEPLOYMENT.md` dosyasındadır. `.env.production.example` içindeki değerler Koyeb Environment variables and secrets alanına girilir. `ENVIRONMENT=production` eksik veya güvensiz yapılandırmada uygulamanın başlamasını durdurur.
+Önerilen kurulum tek bir VDS üzerinde Docker Compose ile çalışır: Caddy (HTTPS), Luma API (siteyi de sunar), PostgreSQL, SeaweedFS (fotoğraflar) ve gece yedeği. Adım adım kurulum `deploy/README.md` dosyasındadır. Eski Koyeb + Neon + Cloudflare planı `KOYEB_DEPLOYMENT.md` dosyasında duruyor. `ENVIRONMENT=production` eksik veya güvensiz yapılandırmada uygulamanın başlamasını durdurur.
 
 Dağıtım öncesi geçiş:
 
