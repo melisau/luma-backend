@@ -118,3 +118,13 @@ docker compose exec -T db dropdb -U luma luma_restore_test
 ## Fotoğrafları Cloudflare R2'de tutmak (isteğe bağlı)
 
 `.env` içinde `COMPOSE_PROFILES=` satırını boşalt, R2 satırlarını aç ve doldur, sonra `docker compose up -d`. R2 yurt dışında olduğu için KVKK yurt dışı aktarım bildirimi gerekir.
+
+## Ortak VDS'te (141.11.109.174) Luma Melisa
+
+Bu sunucuda 80/443'ü ortak Caddy (`berkdev-proxy-caddy-1`) tutar, bu yüzden yukarıdaki `docker-compose.yml` değil `compose.vds.yaml` kullanılır: kendi Caddy'si yok, port yayınlamaz, `berkdev-proxy` ağına bağlanır. Konteyner adları `melisaluma-*`.
+
+- Klasör: `/opt/melisaluma` (içinde `luma-backend`, `luma-frontend`, `.env.vds`, `backups/`)
+- Sırlar: `/opt/melisaluma/.env.vds` (chmod 600): `DOMAIN`, `ENVIRONMENT`, `SECRET_KEY`, `POSTGRES_PASSWORD`, `STORAGE_SECRET_ACCESS_KEY`, SMTP alanları
+- Güncelleme: `/opt/melisaluma/luma-backend/deploy/vds-deploy.sh [dal]`
+- Ortak Caddyfile'daki blok `luma.melisauyar.com` için `/luma-private/*` isteklerini `melisaluma-storage:8333`'e, gerisini `melisaluma-api:8000`'e yollar. Caddyfile'ı değiştirmeden önce `/opt/CLAUDE.md` kurallarına uy.
+- SMTP gelene kadar `ENVIRONMENT=development` ile açılabilir: e-posta gönderilmez (loglara yazılır), doğrulama zorunlu değildir. Gerçek kullanıcı almadan önce SMTP'yi ekleyip `ENVIRONMENT=production` yap.
