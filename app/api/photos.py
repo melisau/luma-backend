@@ -315,6 +315,22 @@ def admin_update_me(
     return AdminProfile.model_validate(admin)
 
 
+@router.get("/admin/me/export")
+def admin_export_me(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    """Download everything stored about this account as JSON (KVKK m.11)."""
+    import json
+
+    from app.services.account_export import export_account
+
+    body = json.dumps(export_account(db, admin), ensure_ascii=False, indent=2)
+    filename = f"luma-event-verilerim-{datetime.now(timezone.utc):%Y%m%d}.json"
+    return Response(
+        content=body,
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "private, no-store"},
+    )
+
+
 @router.delete("/admin/me", status_code=status.HTTP_204_NO_CONTENT)
 def admin_delete_me(
     payload: AdminDeleteAccountRequest,
