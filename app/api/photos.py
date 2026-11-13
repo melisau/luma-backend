@@ -17,6 +17,7 @@ from app.schemas.admin import AdminProfile, AdminProfileUpdate
 from app.schemas.event import EventAdmin, EventCreateAdmin, EventUpdateAdmin
 from app.schemas.photo import (
     AdminChangePasswordRequest,
+    AdminDeleteAccountRequest,
     AdminLoginRequest,
     AdminLoginResponse,
     AdminRegisterRequest,
@@ -312,6 +313,40 @@ def admin_update_me(
     db.commit()
     db.refresh(admin)
     return AdminProfile.model_validate(admin)
+
+
+@router.delete("/admin/me", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_me(
+    payload: AdminDeleteAccountRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    """Delete the account and everything it owns (KVKK m.11 / m.7). Cannot be undone."""
+    enforce_login_rate_limit(request.client.host if request.client else "unknown")
+    if not verify_password(payload.password, admin.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Şifre hatalı.")
+
+    admin_id, email = admin.id, admin.email
+    # Owned events go through the normal delete so their photos, cover and music files are removed too.
+    for event in db.query(Event).filter(Event.admin_id == admin_id).all():
+        delete_event_admin(db, event)
+    db.query(EventMember).filter(EventMember.admin_id == admin_id).delete(synchronize_session=False)
+    db.query(AccountToken).filter(AccountToken.admin_id == admin_id).delete(synchronize_session=False)
+    db.delete(db.get(AdminUser, admin_id))  # contacts go with it (cascade)
+    db.commit()
+    logger.info("Admin account deleted id=%s", admin_id)
+
+    try:
+        send_email(
+            email,
+            "Luma Event hesabınız silindi",
+            "Luma Event hesabınız ve hesabınıza ait etkinlikler, misafir listeleri, fotoğraflar ve mesajlar silindi.\n\n"
+            "Bu işlemi siz yapmadıysanız kvkk@melisauyar.com adresine yazın.",
+        )
+    except Exception:
+        logger.exception("Account deletion email failed")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/admin/change-password", status_code=status.HTTP_204_NO_CONTENT)
