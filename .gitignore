@@ -13,4 +13,4 @@ uploads/
 .pytest_cache/
 .DS_Store
 *.log
-=*
+deploy/backups/

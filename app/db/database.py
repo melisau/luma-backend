@@ -117,5 +117,10 @@ def run_alembic_migrations() -> None:
 def init_db() -> None:
     from app.db import models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
+    # Migrations don't create the base tables, so create_all still builds an empty database.
+    # An existing production database changes only through Alembic, so a model change
+    # without a migration fails loudly instead of drifting silently.
+    is_empty = not inspect(engine).get_table_names()
+    if is_empty or get_settings().environment != "production":
+        Base.metadata.create_all(bind=engine)
     run_alembic_migrations()

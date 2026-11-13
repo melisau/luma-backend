@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     storage_access_key_id: str | None = None
     storage_secret_access_key: str | None = None
     storage_region: str = "auto"
+    # Address browsers use for signed photo links when the API reaches storage
+    # on an internal one (e.g. MinIO at http://minio:9000 behind Caddy).
+    storage_public_endpoint: str | None = None
 
     memory_cleanup_enabled: bool = True
     memory_cleanup_interval_seconds: int = 3600
@@ -38,7 +41,10 @@ class Settings(BaseSettings):
     logins_per_minute: int = 10
     messages_per_minute: int = 20
     rsvps_per_minute: int = 20
+    registrations_per_hour: int = 5
     signed_url_expiry_seconds: int = 300
+    # None = on in production, off elsewhere.
+    require_verified_email: bool | None = None
 
     frontend_origins: str = "http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:8000,http://localhost:8000"
 
@@ -97,6 +103,12 @@ class Settings(BaseSettings):
         if path.is_dir() and (path / "index.html").is_file():
             return path.resolve()
         return None
+
+    @property
+    def email_verification_required(self) -> bool:
+        if self.require_verified_email is None:
+            return self.environment == "production"
+        return self.require_verified_email
 
     @property
     def max_photo_size_bytes(self) -> int:

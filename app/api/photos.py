@@ -36,7 +36,11 @@ from app.services.event_service import (
     update_event_admin,
 )
 from app.services.photo_service import PhotoService
-from app.services.rate_limit import enforce_login_rate_limit, enforce_upload_rate_limit
+from app.services.rate_limit import (
+    enforce_login_rate_limit,
+    enforce_register_rate_limit,
+    enforce_upload_rate_limit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -252,6 +256,7 @@ def get_photo_thumbnail(
 def admin_register(payload: AdminRegisterRequest, request: Request, db: Session = Depends(get_db)):
     client_ip = request.client.host if request.client else "unknown"
     enforce_login_rate_limit(client_ip)
+    enforce_register_rate_limit(client_ip)
     email = payload.email.strip().lower()
     if not email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Geçerli bir e-posta adresi girin.")

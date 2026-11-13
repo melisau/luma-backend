@@ -5,6 +5,7 @@ from app.core.config import get_settings
 from app.db import database as db_module
 from app.db.models import Event, Guest
 from app.services.email_service import send_email
+from app.services.rate_limit import owner_can_reach_guests
 
 logger=logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ def send_due_reminders() -> int:
         for event in events:
             due=event.rsvp_reminder_at if event.rsvp_reminder_at.tzinfo else event.rsvp_reminder_at.replace(tzinfo=timezone.utc)
             if due>now: continue
+            if not owner_can_reach_guests(event): continue
             url=f"{(get_settings().public_base_url or 'http://localhost:5500').rstrip('/')}/e/{event.private_token}"
             for guest in db.query(Guest).filter(Guest.event_id==event.id,Guest.status=="pending").all():
                 try:

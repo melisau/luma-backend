@@ -64,6 +64,26 @@ def enforce_login_rate_limit(client_ip: str) -> None:
     )
 
 
+register_rate_limiter = RateLimiter()
+
+
+def enforce_register_rate_limit(client_ip: str) -> None:
+    register_rate_limiter.check(
+        f"register:{client_ip}",
+        get_settings().registrations_per_hour,
+        window_seconds=3600,
+        detail="Bu ağdan çok fazla hesap açıldı. Lütfen daha sonra tekrar deneyin.",
+    )
+
+
+def owner_can_reach_guests(event) -> bool:
+    """Unverified owners cannot publish invitations or email guests when verification is required."""
+    if not get_settings().email_verification_required:
+        return True
+    owner = getattr(event, "admin", None)
+    return bool(owner and owner.email_verified_at)
+
+
 def enforce_message_rate_limit(client_ip: str, event_token: str) -> None:
     settings = get_settings()
     message_rate_limiter.check(f"msg-ip:{client_ip}", settings.messages_per_minute)

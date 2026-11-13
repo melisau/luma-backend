@@ -2,25 +2,33 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
+import jwt
 
 from app.core.config import get_settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ALGORITHM = "HS256"
+# bcrypt only uses the first 72 bytes; passlib truncated silently, so existing hashes match this.
+BCRYPT_MAX_BYTES = 72
 
 
 def generate_event_token() -> str:
     return secrets.token_urlsafe(24)
 
 
+def _password_bytes(password: str) -> bytes:
+    return password.encode("utf-8")[:BCRYPT_MAX_BYTES]
+
+
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_password_bytes(password), bcrypt.gensalt()).decode("ascii")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(_password_bytes(plain_password), hashed_password.encode("ascii"))
+    except (ValueError, TypeError):
+        return False
 
 
 def create_admin_token(subject: str, token_version: int) -> str:
@@ -44,7 +52,7 @@ def decode_admin_token(token: str) -> tuple[str, int] | None:
         ):
             return None
         return subject, version
-    except JWTError:
+    except jwt.PyJWTError:
         return None
 
 

@@ -4,6 +4,7 @@ from app.api.event_access import router as access_router, require_event_access
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import logging
+import mimetypes
 import uuid
 import time
 
@@ -24,12 +25,63 @@ from app.db.database import init_db
 from app.db.models import AdminUser, Event
 
 logger = logging.getLogger(__name__)
+# Some OS mime tables lack these; static files would otherwise go out as octet-stream.
+mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("image/avif", ".avif")
 if get_settings().sentry_dsn:
     try:
         import sentry_sdk
         sentry_sdk.init(dsn=get_settings().sentry_dsn,environment=get_settings().environment,send_default_pii=False)
     except ImportError:
         logger.warning("SENTRY_DSN ayarlı ancak sentry-sdk kurulu değil")
+
+# Same rules as luma-frontend/_headers; keep them in sync.
+CONTENT_SECURITY_POLICY = "; ".join(
+    [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data: blob: https:",
+        "media-src 'self' data: blob: https:",
+        "connect-src 'self' https:",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "object-src 'none'",
+    ]
+)
+PAGE_HEADERS = {
+    "Content-Security-Policy": CONTENT_SECURITY_POLICY,
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+}
+STATIC_CACHE = {
+    "/assets/": "public, max-age=2592000",
+    "/css/": "public, max-age=86400",
+    "/js/": "public, max-age=86400",
+}
+EDITOR_HEADERS = {
+    "X-Robots-Tag": "noindex, nofollow, noimageindex",
+    "Cache-Control": "private, no-cache",
+}
+
+
+def site_headers(path: str) -> dict[str, str]:
+    """Security and cache headers for the pages and files the backend serves."""
+    for prefix, cache in STATIC_CACHE.items():
+        if path.startswith(prefix):
+            return {"Cache-Control": cache, "X-Content-Type-Options": "nosniff"}
+    if path.startswith("/api/"):
+        return {}
+    headers = dict(PAGE_HEADERS)
+    if path == "/app.html":
+        headers.update(EDITOR_HEADERS)
+    elif not path.startswith("/e/"):
+        headers["Cache-Control"] = "no-cache"
+    return headers
+
 
 PRIVATE_HEADERS = {
     "Cache-Control": "private, no-store",
@@ -166,6 +218,9 @@ async def privacy_headers_middleware(request: Request, call_next):
     logger.info("request method=%s route=%s status=%s duration_ms=%.1f request_id=%s",request.method,safe_route,response.status_code,(time.perf_counter()-started)*1000,request_id)
     if request.url.path.startswith(("/e/", "/api/")):
         for key, value in PRIVATE_HEADERS.items():
+            response.headers.setdefault(key, value)
+    if frontend_dir:
+        for key, value in site_headers(request.url.path).items():
             response.headers.setdefault(key, value)
     return response
 
