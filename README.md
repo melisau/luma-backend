@@ -83,7 +83,8 @@ Full list: [`.env.example`](.env.example). Production template: [`.env.productio
 | `ADMIN_EMAIL` | Local development seed email | `admin@example.com` |
 | `ADMIN_PASSWORD` | Local development seed password; never used in production | unset |
 | `BOOTSTRAP_ADMIN_ENABLED` | Permit local development seed only | `false` |
-| `UPLOADS_PER_MINUTE` | Upload rate limit per IP/event | `10` |
+| `UPLOADS_PER_MINUTE` | Upload requests per minute per IP (a venue Wi-Fi shares one IP) | `60` |
+| `EVENT_UPLOADS_PER_MINUTE` | Upload requests per minute per event | `150` |
 | `LOGINS_PER_MINUTE` | Admin login attempt limit | `10` |
 | `MESSAGES_PER_MINUTE` | Guestbook message rate limit | `20` |
 | `MAX_PHOTO_SIZE_MB` | Max file size per photo | `15` |

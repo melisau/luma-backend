@@ -37,7 +37,10 @@ class Settings(BaseSettings):
     max_photo_size_mb: int = 15
     max_photos_per_event: int = 500
     uploads_enabled: bool = True
-    uploads_per_minute: int = 10
+    # Upload requests (each one a batch of photos) per minute. Per IP: one venue Wi-Fi can carry
+    # ~200 guests behind a single address. Per event: ceiling for one invitation link.
+    uploads_per_minute: int = 60
+    event_uploads_per_minute: int = 150
     logins_per_minute: int = 10
     messages_per_minute: int = 20
     rsvps_per_minute: int = 20
