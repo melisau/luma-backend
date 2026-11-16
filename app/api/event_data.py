@@ -157,13 +157,14 @@ def public_rsvp(
     event = get_event_by_token(db, event_token)
     enforce_rsvp_rate_limit(request.client.host if request.client else "unknown", event_token)
     response.headers["Cache-Control"] = "no-store"
-    guest, edit_token = submit_rsvp(db, event, payload)
+    guest, edit_token, dietary_dropped = submit_rsvp(db, event, payload)
     try:
         url=f"{(get_settings().public_base_url or 'http://localhost:5500').rstrip('/')}/e/{event_token}"
         send_email(guest.email,f"{event.name} RSVP onayı",f"Yanıtınız alındı: {guest.people} kişi, durum: {guest.status}. Davetiye: {url}")
     except Exception:
         import logging; logging.getLogger(__name__).exception("RSVP confirmation email failed")
-    return RsvpReceipt(**GuestPublic.model_validate(guest).model_dump(), edit_token=edit_token)
+    return RsvpReceipt(**GuestPublic.model_validate(guest).model_dump(), edit_token=edit_token,
+                       dietary_dropped=dietary_dropped)
 
 
 @router.get("/events/{event_token}/messages", response_model=list[GuestbookMessagePublic])
@@ -429,14 +430,16 @@ def export_guests_csv(event_token: str, db: Session = Depends(get_db), admin: Ad
     event = get_admin_event_or_404(db, event_token, admin.id, write=False)
     output = StringIO(newline="")
     writer = csv.writer(output)
-    writer.writerow(["Ad Soyad", "E-posta", "Durum", "Kişi Sayısı", "Beslenme", "Not", "Yanıt Zamanı", "Grup", "Masa"])
+    writer.writerow(["Ad Soyad", "E-posta", "Durum", "Kişi Sayısı", "Beslenme", "Beslenme Rızası", "Not", "Yanıt Zamanı", "Grup", "Masa"])
     def safe(value):
         value = str(value or "")
         return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) or value.startswith(("\t", "\r", "\n")) else value
     labels = {"attending": "Katılacak", "declined": "Katılmayacak", "pending": "Bekleniyor"}
     for guest in list_guests(db, event):
         writer.writerow([safe(guest.name), safe(guest.email), labels[guest.status], guest.people,
-                         safe(guest.dietary_requirements), safe(guest.notes),
+                         safe(guest.dietary_requirements),
+                         guest.dietary_consent_at.isoformat() if guest.dietary_consent_at else "",
+                         safe(guest.notes),
                          guest.responded_at.isoformat() if guest.responded_at else "",
                          safe(guest.group_name), safe(guest.table_name)])
     return Response(content=("\ufeff" + output.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8",

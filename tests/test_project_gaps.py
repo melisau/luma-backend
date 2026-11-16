@@ -27,7 +27,7 @@ def test_csv_private_unicode_and_formula_safe(client, admin_headers):
     assert response.content.startswith(b"\xef\xbb\xbf")
     rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
     assert rows[1][0] == "'=1+1"
-    assert rows[1][5] == "İstanbul, Türkiye\nİkinci satır"
+    assert rows[1][6] == "İstanbul, Türkiye\nİkinci satır"
     assert response.headers["cache-control"] == "private, no-store"
     from app.db import database
     from app.db.models import AdminUser, Event

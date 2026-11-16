@@ -81,7 +81,12 @@ def update_guest_admin(db: Session, event: Event, guest_id: str, payload: GuestU
         guest.status = payload.status
     if payload.people is not None:
         guest.people = payload.people
-    for field in ("dietary_requirements", "notes", "group_name", "table_name"):
+    if payload.dietary_requirements is not None and payload.dietary_requirements != guest.dietary_requirements:
+        guest.dietary_requirements = payload.dietary_requirements
+        # Planner-entered dietary info is the planner's responsibility (data controller); any earlier
+        # guest consent covered only the text the guest wrote, so it no longer applies.
+        guest.dietary_consent_at = None
+    for field in ("notes", "group_name", "table_name"):
         if getattr(payload, field) is not None:
             setattr(guest, field, getattr(payload, field))
     db.commit()
@@ -97,7 +102,7 @@ def delete_guest_admin(db: Session, event: Event, guest_id: str) -> None:
     db.commit()
 
 
-def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> tuple[Guest, str]:
+def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> tuple[Guest, str, bool]:
     if not event.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu etkinlik artık aktif değil.")
     email = normalize_email(payload.email)
@@ -116,11 +121,18 @@ def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> tuple[Guest, 
         edit_token = secrets.token_urlsafe(32)
     now = utc_now()
     created = guest is None
+    # KVKK m.6: dietary info may reveal health or religious data, so it is stored only with the
+    # guest's explicit consent. Without it the rest of the RSVP is still saved; an empty field
+    # withdraws consent and removes the stored info.
+    dietary = payload.dietary_requirements if payload.dietary_consent else ""
+    dietary_consent_at = now if dietary else None
+    dietary_dropped = bool(payload.dietary_requirements) and not payload.dietary_consent
     if guest:
         guest.name = payload.name.strip()
         guest.status = payload.status
         guest.people = payload.people
-        guest.dietary_requirements = payload.dietary_requirements
+        guest.dietary_requirements = dietary
+        guest.dietary_consent_at = dietary_consent_at
         guest.notes = payload.notes
         guest.responded_at = now
     else:
@@ -131,7 +143,8 @@ def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> tuple[Guest, 
             email=email,
             status=payload.status,
             people=payload.people,
-            dietary_requirements=payload.dietary_requirements,
+            dietary_requirements=dietary,
+            dietary_consent_at=dietary_consent_at,
             notes=payload.notes,
             source=GuestSource.EXTERNAL.value,
             responded_at=now,
@@ -149,7 +162,7 @@ def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> tuple[Guest, 
     else:
         text = f"{guest.name} katılım durumunu “{status_label}” olarak güncelledi"
     record_activity(db, event, text, "check")
-    return guest, edit_token
+    return guest, edit_token, dietary_dropped
 
 
 def list_messages(db: Session, event: Event, *, approved_only: bool = False) -> list[GuestbookMessage]:
