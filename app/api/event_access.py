@@ -25,6 +25,17 @@ def signature(event, expires):
 
 
 def require_event_access(request: Request, db: Session=Depends(get_db)):
+    """Runs before every public API request, often while a photo is still being uploaded over slow
+    venue Wi-Fi. Hand the connection back as soon as the check is done: a held connection per
+    in-flight upload exhausted the pool under load (150 guests) and every page timed out. The
+    request's session reconnects by itself if the endpoint queries again."""
+    try:
+        _check_event_access(request, db)
+    finally:
+        db.close()
+
+
+def _check_event_access(request: Request, db: Session):
     path=request.url.path
     event=None
     if path.startswith('/api/events/'):

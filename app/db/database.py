@@ -7,7 +7,12 @@ from app.core.config import ROOT, get_settings
 
 settings = get_settings()
 connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
-engine = create_engine(settings.database_url, connect_args=connect_args)
+# Room for a crowded wedding on one process: FastAPI runs up to 40 requests at once in worker
+# threads, each may hold a connection, so the pool must exceed that or pages time out under load
+# (measured with 150 guests uploading). PostgreSQL allows 100. pre_ping drops connections the
+# database closed meanwhile.
+pool_args = {} if ":memory:" in settings.database_url else {"pool_size": 20, "max_overflow": 30, "pool_pre_ping": True}
+engine = create_engine(settings.database_url, connect_args=connect_args, **pool_args)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 

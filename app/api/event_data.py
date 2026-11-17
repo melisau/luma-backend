@@ -325,7 +325,7 @@ def admin_update_invitation(
 
 
 @router.post("/admin/events/{event_token}/invitation/cover", response_model=InvitationPublic)
-async def admin_upload_cover(
+def admin_upload_cover(
     event_token: str,
     file: Annotated[UploadFile, File()],
     db: Session = Depends(get_db),
@@ -354,7 +354,7 @@ def admin_delete_cover(
 
 
 @router.post("/admin/events/{event_token}/invitation/music", response_model=InvitationPublic)
-async def admin_upload_music(
+def admin_upload_music(
     event_token: str,
     file: Annotated[UploadFile, File()],
     db: Session = Depends(get_db),
@@ -384,7 +384,7 @@ def admin_delete_music(
     return _invitation_public(event, event_token, covers, music, memory)
 
 @router.post("/admin/events/{event_token}/invitation/memory-cover", response_model=InvitationPublic)
-async def admin_upload_memory_cover(event_token: str, file: Annotated[UploadFile, File()], db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin), covers: InvitationCoverService = Depends(get_cover_service), music: InvitationMusicService = Depends(get_music_service), memory: MemoryCoverService = Depends(get_memory_cover_service)):
+def admin_upload_memory_cover(event_token: str, file: Annotated[UploadFile, File()], db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin), covers: InvitationCoverService = Depends(get_cover_service), music: InvitationMusicService = Depends(get_music_service), memory: MemoryCoverService = Depends(get_memory_cover_service)):
     event = get_admin_event_or_404(db, event_token, admin.id)
     event = memory.upload(db, event, file)
     return _invitation_public(event, event_token, covers, music, memory)
