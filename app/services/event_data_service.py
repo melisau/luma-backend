@@ -52,6 +52,7 @@ def create_guest_admin(db: Session, event: Event, payload: GuestCreateAdmin) -> 
         notes=payload.notes,
         group_name=payload.group_name,
         table_name=payload.table_name,
+        phone=payload.phone or "",
         source=payload.source,
     )
     db.add(guest)
@@ -86,7 +87,7 @@ def update_guest_admin(db: Session, event: Event, guest_id: str, payload: GuestU
         # Planner-entered dietary info is the planner's responsibility (data controller); any earlier
         # guest consent covered only the text the guest wrote, so it no longer applies.
         guest.dietary_consent_at = None
-    for field in ("notes", "group_name", "table_name"):
+    for field in ("notes", "group_name", "table_name", "phone"):
         if getattr(payload, field) is not None:
             setattr(guest, field, getattr(payload, field))
     db.commit()
