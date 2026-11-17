@@ -8,8 +8,11 @@ from app.db.database import Base
 from app.db import models  # noqa: F401
 
 config = context.config
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+# Migrations also run inside the app at startup (database.run_alembic_migrations passes the
+# connection). There the app's logging must stay as it is: fileConfig's default disables every
+# logger created before it, which silenced all app error logs (and Sentry's view of them).
+if config.config_file_name is not None and "connection" not in config.attributes:
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 
