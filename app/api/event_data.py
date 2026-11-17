@@ -437,7 +437,7 @@ def export_guests_csv(event_token: str, db: Session = Depends(get_db), admin: Ad
     event = get_admin_event_or_404(db, event_token, admin.id, write=False)
     output = StringIO(newline="")
     writer = csv.writer(output)
-    writer.writerow(["Ad Soyad", "E-posta", "Durum", "Kişi Sayısı", "Beslenme", "Beslenme Rızası", "Not", "Yanıt Zamanı", "Grup", "Masa"])
+    writer.writerow(["Ad Soyad", "E-posta", "Durum", "Kişi Sayısı", "Beslenme", "Beslenme Rızası", "Not", "Yanıt Zamanı", "Grup", "Masa", "Telefon"])
     def safe(value):
         value = str(value or "")
         return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) or value.startswith(("\t", "\r", "\n")) else value
@@ -448,7 +448,7 @@ def export_guests_csv(event_token: str, db: Session = Depends(get_db), admin: Ad
                          guest.dietary_consent_at.isoformat() if guest.dietary_consent_at else "",
                          safe(guest.notes),
                          guest.responded_at.isoformat() if guest.responded_at else "",
-                         safe(guest.group_name), safe(guest.table_name)])
+                         safe(guest.group_name), safe(guest.table_name), safe(guest.phone)])
     return Response(content=("\ufeff" + output.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": 'attachment; filename="luma-guests.csv"', "Cache-Control": "private, no-store"})
 
@@ -479,6 +479,21 @@ def get_invite_link(event_token: str, guest_id: str, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Misafir bulunamadı.")
     return JSONResponse({"fragment": guest_access.invite_fragment(guest), "device_count": guest.device_count,
                          "device_allowance": guest_access.device_allowance(guest)}, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/admin/events/{event_token}/guests/{guest_id}/invite-link/sent", response_model=GuestPublic)
+def mark_invite_sent(event_token: str, guest_id: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    """The owner sent the personal link (WhatsApp / copy); shown as 'Gönderildi' in the guest list."""
+    from datetime import datetime, timezone
+    from app.db.models import Guest
+    event = get_admin_event_or_404(db, event_token, admin.id)
+    guest = db.query(Guest).filter(Guest.event_id == event.id, Guest.id == guest_id).one_or_none()
+    if not guest:
+        raise HTTPException(status_code=404, detail="Misafir bulunamadı.")
+    guest.invite_sent_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(guest)
+    return GuestPublic.model_validate(guest)
 
 
 @router.post("/admin/events/{event_token}/guests/{guest_id}/invite-link/reset")

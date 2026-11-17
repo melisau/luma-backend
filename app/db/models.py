@@ -150,6 +150,10 @@ class Guest(Base):
     # Personal invitation link: derived from SECRET_KEY, guest id and this version; bumping the
     # version (link reset) invalidates the old link at once.
     invite_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Optional phone (international form, e.g. +905321234567) for sending the link over WhatsApp.
+    phone: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    # When the owner last sent the personal link (WhatsApp / copy) from the panel.
+    invite_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # One-time e-mail code for opening the invitation on a further device.
     access_code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     access_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -162,6 +166,11 @@ class Guest(Base):
     @property
     def device_count(self) -> int:
         return len(self.devices)
+
+    @property
+    def opened_at(self) -> datetime | None:
+        """When the personal invitation was first opened (first device bound)."""
+        return min((device.created_at for device in self.devices), default=None)
 
     __table_args__ = (UniqueConstraint("event_id", "email", name="uq_event_guest_email"),)
 

@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, EmailStr
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, EmailStr, field_validator
 
 
 GuestStatusLiteral = Literal["attending", "declined", "pending"]
@@ -27,10 +29,39 @@ class GuestPublic(BaseModel):
     responded_at: datetime | None = None
     # Personal-link mode: how many devices opened this guest's invitation.
     device_count: int = 0
+    phone: str = ""
+    invite_sent_at: datetime | None = None
+    opened_at: datetime | None = None
+
+
+def normalize_phone(value: str | None) -> str | None:
+    """'0532 123 45 67', '532 123 4567', '+90 532...' -> '+905321234567'. Empty stays empty."""
+    if value is None:
+        return None
+    raw = value.strip()
+    if not raw:
+        return ""
+    digits = re.sub(r"\D", "", raw)
+    if raw.startswith("+"):
+        pass
+    elif digits.startswith("00"):
+        digits = digits[2:]
+    elif digits.startswith("0") and len(digits) == 11:
+        digits = "90" + digits[1:]
+    elif len(digits) == 10 and digits.startswith("5"):
+        digits = "90" + digits
+    if not 8 <= len(digits) <= 15:
+        raise ValueError("Telefon numarasını ülke koduyla ya da 0 ile başlayarak yazın. Örn. 0532 123 45 67")
+    return "+" + digits
 
 
 class GuestInput(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
+
+    @field_validator("phone", mode="before", check_fields=False)
+    @classmethod
+    def phone_format(cls, value):
+        return normalize_phone(value)
 
 
 class GuestCreateAdmin(GuestInput):
@@ -42,6 +73,7 @@ class GuestCreateAdmin(GuestInput):
     notes: str = Field(default="", max_length=2000)
     group_name: str = Field(default="", max_length=255)
     table_name: str = Field(default="", max_length=255)
+    phone: str = Field(default="", max_length=32)
     source: GuestSourceLiteral = "admin"
 
 
@@ -54,6 +86,7 @@ class GuestUpdateAdmin(GuestInput):
     notes: str | None = Field(default=None, max_length=2000)
     group_name: str | None = Field(default=None, max_length=255)
     table_name: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=32)
 
 
 class RsvpReceipt(GuestPublic):
