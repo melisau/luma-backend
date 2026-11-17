@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile, status
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -52,9 +52,12 @@ def _account_token(db: Session, admin: AdminUser, purpose: str, minutes: int) ->
     db.add(AccountToken(admin_id=admin.id,token_hash=hashlib.sha256(raw.encode()).hexdigest(),purpose=purpose,expires_at=datetime.now(timezone.utc)+timedelta(minutes=minutes)))
     db.commit();return raw
 
+def _app_url() -> str:
+    return f"{(get_settings().public_base_url or 'http://localhost:5500').rstrip('/')}/app.html"
+
 def _frontend_link(kind: str, token: str) -> str:
-    base=(get_settings().public_base_url or "http://localhost:5500").rstrip("/")
-    return f"{base}/?{kind}_token={token}"
+    # app.html handles these links; the landing page (/) does not load that code.
+    return f"{_app_url()}?{kind}_token={token}"
 
 def _consume_token(db: Session, raw: str, purpose: str, *, lock: bool = False) -> AccountToken:
     query = db.query(AccountToken).filter(
@@ -253,8 +256,20 @@ def get_photo_thumbnail(
     )
 
 
+REGISTER_CHECK_EMAIL = (
+    "E-posta adresinize bir bağlantı gönderdik. Bağlantıya tıklayıp adresinizi doğruladıktan sonra giriş yapabilirsiniz."
+)
+
+
 @router.post("/admin/register", response_model=AdminLoginResponse, status_code=status.HTTP_201_CREATED)
 def admin_register(payload: AdminRegisterRequest, request: Request, db: Session = Depends(get_db)):
+    """Creates an owner account.
+
+    When e-mail verification is required (production), the answer is the same 202 whether or not
+    the address already has an account, so the form does not reveal who is a member: a new
+    account gets a verification link, an existing one an e-mail saying it already exists.
+    Elsewhere (development, tests) the new account is logged in at once, as before.
+    """
     client_ip = request.client.host if request.client else "unknown"
     enforce_login_rate_limit(client_ip)
     enforce_register_rate_limit(client_ip)
@@ -264,12 +279,26 @@ def admin_register(payload: AdminRegisterRequest, request: Request, db: Session 
     email = payload.email.strip().lower()
     if not email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Geçerli bir e-posta adresi girin.")
-    if db.query(AdminUser).filter(AdminUser.email == email).one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Bu e-posta adresi zaten kayıtlı.")
+    private = get_settings().email_verification_required
+    # Hash before the lookup so both branches take about the same time.
+    password_hash = hash_password(payload.password)
+    existing = db.query(AdminUser).filter(AdminUser.email == email).one_or_none()
+    if existing:
+        if not private:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Bu e-posta adresi zaten kayıtlı.")
+        try:
+            send_email(existing.email, "Luma: bu e-posta ile zaten hesabınız var",
+                       "Biri (muhtemelen siz) bu e-posta adresiyle Luma'da yeni hesap açmayı denedi. "
+                       f"Hesabınız zaten var; giriş yapabilirsiniz: {_app_url()}\n"
+                       "Şifrenizi hatırlamıyorsanız giriş ekranındaki \"Şifremi unuttum\" bağlantısını kullanın. "
+                       "Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.")
+        except Exception:
+            logger.exception("Existing-account email failed")
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={"status": "check_email", "detail": REGISTER_CHECK_EMAIL})
     display_name = payload.display_name.strip() if payload.display_name and payload.display_name.strip() else None
     admin = AdminUser(
         email=email,
-        password_hash=hash_password(payload.password),
+        password_hash=password_hash,
         display_name=display_name,
         terms_accepted_at=datetime.now(timezone.utc),
         terms_version=get_settings().terms_version,
@@ -280,6 +309,8 @@ def admin_register(payload: AdminRegisterRequest, request: Request, db: Session 
     raw=_account_token(db,admin,"verify",24*60)
     try: send_email(admin.email,"Luma e-posta doğrulama",f"E-posta adresinizi doğrulayın: {_frontend_link('verify',raw)}")
     except Exception: logger.exception("Verification email failed")
+    if private:
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={"status": "check_email", "detail": REGISTER_CHECK_EMAIL})
     return AdminLoginResponse(
         access_token=create_admin_token(admin.id, admin.token_version),
         email=admin.email,
@@ -294,6 +325,13 @@ def admin_login(payload: AdminLoginRequest, request: Request, db: Session = Depe
     admin = db.query(AdminUser).filter(AdminUser.email == payload.email.lower()).one_or_none()
     if not admin or not verify_password(payload.password, admin.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Geçersiz kimlik bilgileri.")
+    if get_settings().email_verification_required and admin.email_verified_at is None:
+        # Only reached with the right password, so it reveals nothing to a stranger.
+        raw = _account_token(db, admin, "verify", 24 * 60)
+        try: send_email(admin.email, "Luma e-posta doğrulama", f"E-posta adresinizi doğrulayın: {_frontend_link('verify', raw)}")
+        except Exception: logger.exception("Verification email failed")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Giriş için önce e-posta adresinizi doğrulayın. Yeni bir doğrulama bağlantısı gönderdik.")
     return AdminLoginResponse(
         access_token=create_admin_token(admin.id, admin.token_version),
         email=admin.email,

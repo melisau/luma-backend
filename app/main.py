@@ -10,7 +10,7 @@ import time
 
 from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -40,8 +40,8 @@ CONTENT_SECURITY_POLICY = "; ".join(
     [
         "default-src 'self'",
         "script-src 'self'",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com",
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self'",
         "img-src 'self' data: blob: https:",
         "media-src 'self' data: blob: https:",
         "connect-src 'self' https:",
@@ -282,6 +282,13 @@ def health():
         return JSONResponse(status_code=503, content=payload)
 
     return payload
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml():
+    if frontend_dir and (frontend_dir / "sitemap.xml").is_file():
+        return FileResponse(frontend_dir / "sitemap.xml", media_type="application/xml")
+    return Response(status_code=404)
 
 
 @app.get("/robots.txt")
