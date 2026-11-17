@@ -8,7 +8,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 PaletteKey = Literal["background", "text", "heading", "hero_text", "details_background", "memory_background", "memory_text", "badge_background", "badge_text", "button_background", "button_text", "countdown_background", "countdown_text"]
 Palette = dict[PaletteKey, Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]]
 
+EventType = Literal["wedding", "engagement", "nikah", "henna", "circumcision", "birthday", "baby_shower", "corporate", "other"]
+FontPair = Literal["classic", "modern", "script", "clean"]
+
+
 class InvitationPresentation(BaseModel):
+    # What is being celebrated (guides wording suggestions and recommended looks) and the font pair.
+    event_type: EventType = "wedding"
+    font: FontPair = "classic"
+    # Name of the ready-made look last applied in the editor (informational).
+    look: str = Field(default="", max_length=40)
     editor_saved: bool = False
     appearance_confirmed: bool = False
     colors_confirmed: bool = False
