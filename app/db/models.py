@@ -129,6 +129,8 @@ class Guest(Base):
     status: Mapped[str] = mapped_column(String(32), default=GuestStatus.PENDING.value, index=True)
     people: Mapped[int] = mapped_column(Integer, default=1)
     dietary_requirements: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # When the guest gave explicit consent (KVKK m.6) for their dietary info; None for planner-entered data.
+    dietary_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="", server_default="")
     group_name: Mapped[str] = mapped_column(String(255), default="", server_default="")
     table_name: Mapped[str] = mapped_column(String(255), default="", server_default="")

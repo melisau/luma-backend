@@ -19,6 +19,7 @@ class GuestPublic(BaseModel):
     people: int
     source: GuestSourceLiteral
     dietary_requirements: str = ""
+    dietary_consent_at: datetime | None = None
     notes: str = ""
     group_name: str = ""
     table_name: str = ""
@@ -55,6 +56,8 @@ class GuestUpdateAdmin(GuestInput):
 
 class RsvpReceipt(GuestPublic):
     edit_token: str
+    # True when the guest wrote dietary info but did not tick the consent box, so it was not stored.
+    dietary_dropped: bool = False
 
 
 class RsvpSubmit(GuestInput):
@@ -64,6 +67,7 @@ class RsvpSubmit(GuestInput):
     status: GuestStatusLiteral
     people: int = Field(default=1, ge=1, le=20)
     dietary_requirements: str = Field(default="", max_length=1000)
+    dietary_consent: bool = False
     notes: str = Field(default="", max_length=2000)
 
 

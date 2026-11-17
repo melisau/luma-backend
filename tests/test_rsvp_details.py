@@ -9,7 +9,7 @@ def test_invitation_rsvp_admin_details(client, admin_headers):
     assert invitation.status_code == 200
     assert client.get(f'/api/events/{TOKEN}/invitation').json()['venue'] == 'Bahçe'
     payload = {'name': '  Deniz  ', 'email': 'deniz@example.com', 'status': 'attending',
-               'people': 7, 'dietary_requirements': 'Glutensiz', 'notes': 'Servis kullanacağım'}
+               'people': 7, 'dietary_requirements': 'Glutensiz', 'dietary_consent': True, 'notes': 'Servis kullanacağım'}
     response = client.post(f'/api/events/{TOKEN}/rsvp', json=payload)
     assert response.status_code == 200
     guest_id = response.json()['id']
