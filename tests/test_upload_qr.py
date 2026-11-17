@@ -16,6 +16,10 @@ def test_upload_qr_is_unique_per_event(client, admin_headers):
     token_b = second.json()["private_token"]
     assert token_a != token_b
 
+    # New events use personal links: the QR (it carries the upload key) is for the owner's panel only.
+    assert client.get(f"/api/events/{token_a}/upload-qr").status_code in (401, 404)
+    for token in (token_a, token_b):
+        assert client.post(f"/api/admin/events/{token}/access-preview", headers=admin_headers).status_code == 200
     qr_a = client.get(f"/api/events/{token_a}/upload-qr")
     qr_b = client.get(f"/api/events/{token_b}/upload-qr")
     assert qr_a.status_code == 200
@@ -34,6 +38,7 @@ def test_upload_qr_uses_event_private_token_not_path_alias(client, admin_headers
         json={"name": "Nişan", "slug": "nisan-2026"},
     )
     token = created.json()["private_token"]
+    client.post(f"/api/admin/events/{token}/access-preview", headers=admin_headers)
 
     response = client.get(f"/api/events/{token}/upload-qr?download=1")
     assert response.status_code == 200

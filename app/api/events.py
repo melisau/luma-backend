@@ -9,14 +9,16 @@ from app.api.photos import get_event_by_token
 from app.core.config import get_settings
 from app.db.database import get_db
 from app.schemas.event import EventPublic
+from app.services import guest_access
 
 router = APIRouter(prefix="/events", tags=["events"])
 
 
-def upload_page_url(request: Request, event_token: str) -> str:
+def upload_page_url(request: Request, event_token: str, upload_key: str | None = None) -> str:
     settings = get_settings()
     base = (settings.public_base_url or str(request.base_url)).rstrip("/")
-    return f"{base}/e/{event_token}/upload"
+    # Personal-link events: the venue QR carries the upload key (photo upload only, event days).
+    return f"{base}/e/{event_token}/upload" + (f"#k={upload_key}" if upload_key else "")
 
 
 @router.get("/{event_token}", response_model=EventPublic)
@@ -36,8 +38,15 @@ def upload_qr(
     event = get_event_by_token(db, event_token)
     if not event.is_active:
         raise HTTPException(status_code=404, detail="Etkinlik bulunamadı.")
+    upload_key = None
+    if guest_access.is_personal(event):
+        # Only the owner and their team (preview cookie from the panel) get the key, not guests.
+        from app.api.event_access import _owner_preview_valid
+        if not _owner_preview_valid(request, event):
+            raise HTTPException(status_code=404, detail="Etkinlik bulunamadı.")
+        upload_key = guest_access.ensure_upload_key(db, event)
 
-    url = upload_page_url(request, event.private_token)
+    url = upload_page_url(request, event.private_token, upload_key)
     box_size = 24 if size == "print" else 9
     qr = qrcode.QRCode(
         version=None,

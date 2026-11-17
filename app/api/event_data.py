@@ -157,7 +157,12 @@ def public_rsvp(
     event = get_event_by_token(db, event_token)
     enforce_rsvp_rate_limit(request.client.host if request.client else "unknown", event_token)
     response.headers["Cache-Control"] = "no-store"
-    guest, edit_token, dietary_dropped = submit_rsvp(db, event, payload)
+    link_guest = None
+    guest_id = getattr(request.state, "luma_guest_id", None)
+    if guest_id:
+        from app.db.models import Guest
+        link_guest = db.query(Guest).filter(Guest.id == guest_id, Guest.event_id == event.id).one_or_none()
+    guest, edit_token, dietary_dropped = submit_rsvp(db, event, payload, link_guest)
     try:
         url=f"{(get_settings().public_base_url or 'http://localhost:5500').rstrip('/')}/e/{event_token}"
         send_email(guest.email,f"{event.name} RSVP onayı",f"Yanıtınız alındı: {guest.people} kişi, durum: {guest.status}. Davetiye: {url}")
@@ -459,6 +464,34 @@ def issue_rsvp_link(event_token: str, guest_id: str, db: Session = Depends(get_d
     guest.rsvp_token_hash = hashlib.sha256(token.encode()).hexdigest()
     db.commit()
     return JSONResponse({"edit_token": token}, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/admin/events/{event_token}/guests/{guest_id}/invite-link")
+def get_invite_link(event_token: str, guest_id: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    """The guest's personal link (the part after '#'); the same every time until it is reset."""
+    from app.db.models import Guest
+    from app.services import guest_access
+    event = get_admin_event_or_404(db, event_token, admin.id)
+    guest = db.query(Guest).filter(Guest.event_id == event.id, Guest.id == guest_id).one_or_none()
+    if not guest:
+        raise HTTPException(status_code=404, detail="Misafir bulunamadı.")
+    return JSONResponse({"fragment": guest_access.invite_fragment(guest), "device_count": guest.device_count,
+                         "device_allowance": guest_access.device_allowance(guest)}, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/admin/events/{event_token}/guests/{guest_id}/invite-link/reset")
+def reset_invite_link(event_token: str, guest_id: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    """New link for the guest: the old one stops working and their devices must open the new one."""
+    from app.db.models import Guest
+    from app.services import guest_access
+    event = get_admin_event_or_404(db, event_token, admin.id)
+    guest = db.query(Guest).filter(Guest.event_id == event.id, Guest.id == guest_id).one_or_none()
+    if not guest:
+        raise HTTPException(status_code=404, detail="Misafir bulunamadı.")
+    guest_access.reset_link(db, guest)
+    record_activity(db, event, f"{guest.name} için yeni kişisel bağlantı oluşturuldu", "sparkle")
+    return JSONResponse({"fragment": guest_access.invite_fragment(guest), "device_count": 0,
+                         "device_allowance": guest_access.device_allowance(guest)}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/admin/events/{event_token}/members", response_model=list[EventMemberPublic])

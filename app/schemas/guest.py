@@ -25,6 +25,8 @@ class GuestPublic(BaseModel):
     table_name: str = ""
     created_at: datetime
     responded_at: datetime | None = None
+    # Personal-link mode: how many devices opened this guest's invitation.
+    device_count: int = 0
 
 
 class GuestInput(BaseModel):

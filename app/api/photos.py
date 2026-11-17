@@ -195,8 +195,10 @@ async def upload_event_photos(
     # the connection): otherwise 150 waiting guests exhaust the pool and every page times out. The
     # session reconnects by itself when the upload runs.
     db.close()
-    client_ip = request.client.host if request.client else "unknown"
-    await run_in_threadpool(enforce_upload_rate_limit, client_ip, event_token)
+    # Personal links: count per guest, so 300 guests on one venue Wi-Fi do not share one IP budget.
+    guest_id = getattr(request.state, "luma_guest_id", None)
+    client_key = f"guest:{guest_id}" if guest_id else (request.client.host if request.client else "unknown")
+    await run_in_threadpool(enforce_upload_rate_limit, client_key, event_token)
 
     if not await _take_processing_slot(get_settings().photo_processing_wait_seconds):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

@@ -105,6 +105,11 @@ class Event(Base):
     music_storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     music_filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
     music_mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # "personal": only guests opening their own link (bound to their devices) see the invitation.
+    # "open": anyone with the event link. Events created before this setting stay "open".
+    invite_mode: Mapped[str] = mapped_column(String(16), default="open", server_default="open")
+    # Venue QR code in personal mode: photo upload only, on the event days.
+    upload_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     photos: Mapped[list["Photo"]] = relationship(back_populates="event", cascade="all, delete-orphan")
     guests: Mapped[list["Guest"]] = relationship(back_populates="event", cascade="all, delete-orphan")
@@ -137,10 +142,36 @@ class Guest(Base):
     source: Mapped[str] = mapped_column(String(32), default=GuestSource.ADMIN.value)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Personal invitation link: derived from SECRET_KEY, guest id and this version; bumping the
+    # version (link reset) invalidates the old link at once.
+    invite_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # One-time e-mail code for opening the invitation on a further device.
+    access_code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    access_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    access_code_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    access_code_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     event: Mapped[Event] = relationship(back_populates="guests")
+    devices: Mapped[list["GuestDevice"]] = relationship(back_populates="guest", cascade="all, delete-orphan")
+
+    @property
+    def device_count(self) -> int:
+        return len(self.devices)
 
     __table_args__ = (UniqueConstraint("event_id", "email", name="uq_event_guest_email"),)
+
+
+class GuestDevice(Base):
+    """A browser that opened a guest's personal invitation link (cookie holds the secret)."""
+    __tablename__ = "guest_devices"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    guest_id: Mapped[str] = mapped_column(String(36), ForeignKey("guests.id", ondelete="CASCADE"), index=True)
+    secret_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    guest: Mapped["Guest"] = relationship(back_populates="devices")
 
 
 class EventMember(Base):
