@@ -73,4 +73,8 @@ def test_compose_offsite_service_does_not_block_deploys():
     assert "RCLONE_CONFIG_B2_ACCOUNT: ${B2_ACCOUNT_ID:-}" in block
     assert "RCLONE_CONFIG_B2_KEY: ${B2_APPLICATION_KEY:-}" in block
     assert "image: rclone/rclone:1." in block
+    # Downloads go over the S3 API: B2's native download hosts are blocked from Turkey.
+    assert "RCLONE_CONFIG_B2S3_ENDPOINT: ${B2_S3_ENDPOINT:-" in block
+    drill = (ROOT / "deploy" / "restore-drill.sh").read_text(encoding="utf-8")
+    assert "b2s3:" in drill and '"b2:' not in drill
     assert "../../backups:/backups" in block
