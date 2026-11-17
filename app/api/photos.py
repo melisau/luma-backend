@@ -224,6 +224,7 @@ async def upload_event_photos(
 @router.get("/photos/{photo_id}")
 def get_photo(
     photo_id: str,
+    request: Request,
     access: str | None = None,
     x_event_token: Annotated[str | None, Header()] = None,
     authorization: Annotated[str | None, Header()] = None,
@@ -238,7 +239,7 @@ def get_photo(
         token = x_event_token or access
         if not token:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Erişim reddedildi.")
-        photo = photos.get_photo_for_event(db, photo_id, token)
+        photo = photos.get_photo_for_event(db, photo_id, token, request)
     signed = photos.signed_access_url(photo, thumbnail=False) if authorization and authorization.startswith("Bearer ") else None
     if signed:
         return SignedPhotoResponse(url=signed, expires_in=get_settings().signed_url_expiry_seconds)
@@ -259,6 +260,7 @@ def get_photo(
 @router.get("/photos/{photo_id}/thumbnail")
 def get_photo_thumbnail(
     photo_id: str,
+    request: Request,
     access: str | None = None,
     x_event_token: Annotated[str | None, Header()] = None,
     authorization: Annotated[str | None, Header()] = None,
@@ -273,7 +275,7 @@ def get_photo_thumbnail(
         token = x_event_token or access
         if not token:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Erişim reddedildi.")
-        photo = photos.get_photo_for_event(db, photo_id, token)
+        photo = photos.get_photo_for_event(db, photo_id, token, request)
     signed = photos.signed_access_url(photo, thumbnail=True) if authorization and authorization.startswith("Bearer ") else None
     if signed:
         return SignedPhotoResponse(url=signed, expires_in=get_settings().signed_url_expiry_seconds)

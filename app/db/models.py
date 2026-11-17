@@ -113,6 +113,8 @@ class Event(Base):
     invite_mode: Mapped[str] = mapped_column(String(16), default="open", server_default="open")
     # Venue QR code in personal mode: photo upload only, on the event days.
     upload_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Slide show settings and the owner's photo order (see app/services/slideshow.py).
+    slideshow: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
 
     photos: Mapped[list["Photo"]] = relationship(back_populates="event", cascade="all, delete-orphan")
     guests: Mapped[list["Guest"]] = relationship(back_populates="event", cascade="all, delete-orphan")

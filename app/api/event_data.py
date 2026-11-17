@@ -3,6 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response, JSONResponse
 from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field
+from typing import Literal
 
 from app.api.photos import get_current_admin, get_event_by_token
 from app.services.event_service import get_admin_event_or_404
@@ -492,6 +494,66 @@ def reset_invite_link(event_token: str, guest_id: str, db: Session = Depends(get
     record_activity(db, event, f"{guest.name} için yeni kişisel bağlantı oluşturuldu", "sparkle")
     return JSONResponse({"fragment": guest_access.invite_fragment(guest), "device_count": 0,
                          "device_allowance": guest_access.device_allowance(guest)}, headers={"Cache-Control": "no-store"})
+
+
+class SlideshowUpdate(BaseModel):
+    photo_ids: list[str] | None = Field(default=None, max_length=5000)
+    auto_add: bool | None = None
+    transition: Literal["fade", "slide", "zoom", "mix"] | None = None
+    seconds: int | None = Field(default=None, ge=3, le=15)
+    show_to_guests: bool | None = None
+    show_captions: bool | None = None
+    title: str | None = Field(default=None, max_length=120)
+
+
+def _slideshow_admin(db: Session, event):
+    from app.api.photos import photo_public
+    from app.services import slideshow
+    current = slideshow.slides(db, event)
+    config = slideshow.settings(event)
+    return {
+        **{key: config[key] for key in ("auto_add", "transition", "seconds", "show_to_guests", "show_captions", "title")},
+        "slides": [photo_public(photo, event.private_token, admin=True).model_dump(mode="json") for photo in current],
+        "available": [photo_public(photo, event.private_token, admin=True).model_dump(mode="json")
+                      for photo in slideshow.available(db, event, current)],
+        "player_path": f"/e/{event.private_token}/slayt",
+        "album_public": bool(event.album_public),
+    }
+
+
+@router.get("/admin/events/{event_token}/slideshow")
+def admin_get_slideshow(event_token: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    event = get_admin_event_or_404(db, event_token, admin.id, write=False)
+    return JSONResponse(_slideshow_admin(db, event), headers={"Cache-Control": "no-store"})
+
+
+@router.put("/admin/events/{event_token}/slideshow")
+def admin_save_slideshow(event_token: str, payload: SlideshowUpdate, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    from app.services import slideshow
+    event = get_admin_event_or_404(db, event_token, admin.id)
+    slideshow.save(db, event, payload.model_dump(exclude_unset=True))
+    return JSONResponse(_slideshow_admin(db, event), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/events/{event_token}/slideshow")
+def public_slideshow(event_token: str, request: Request, db: Session = Depends(get_db)):
+    """The player's data. Guests see it only if the owner allows; the owner's screen always can."""
+    from app.api.event_access import _owner_preview_valid
+    from app.services import slideshow
+    event = get_event_by_token(db, event_token)
+    config = slideshow.settings(event)
+    if not slideshow.guests_can_watch(event) and not _owner_preview_valid(request, event):
+        raise HTTPException(status_code=404, detail="Slayt gösterisi kapalı.")
+    items = [{
+        "id": photo.id,
+        "url": f"/api/photos/{photo.id}?access={event.private_token}",
+        "thumbnail_url": f"/api/photos/{photo.id}/thumbnail?access={event.private_token}",
+        "width": photo.width, "height": photo.height,
+        "uploader_name": photo.uploader_name if config["show_captions"] else "",
+        "caption": photo.caption if config["show_captions"] else "",
+    } for photo in slideshow.slides(db, event)]
+    return JSONResponse({"title": config["title"] or event.name, "transition": config["transition"],
+                         "seconds": config["seconds"], "slides": items}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/admin/events/{event_token}/members", response_model=list[EventMemberPublic])

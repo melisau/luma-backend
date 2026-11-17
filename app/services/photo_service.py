@@ -317,10 +317,14 @@ class PhotoService:
             .all()
         )
 
-    def get_photo_for_event(self, db: Session, photo_id: str, event_token: str) -> Photo:
+    def get_photo_for_event(self, db: Session, photo_id: str, event_token: str, request=None) -> Photo:
         event = db.query(Event).filter(Event.private_token == event_token).one_or_none()
-        if not event or not event.is_active or not event.album_public:
+        if not event or not event.is_active:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fotoğraf bulunamadı.")
+        if not event.album_public:
+            from app.api.event_access import slideshow_photo_visible
+            if request is None or not slideshow_photo_visible(request, db, event, photo_id):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fotoğraf bulunamadı.")
 
         photo = (
             db.query(Photo)
