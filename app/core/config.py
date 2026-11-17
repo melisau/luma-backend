@@ -35,12 +35,15 @@ class Settings(BaseSettings):
     memory_cleanup_interval_seconds: int = 3600
     max_photo_dimension: int = 4096
     max_photo_size_mb: int = 15
-    max_photos_per_event: int = 500
+    max_photos_per_event: int = 3000
+    # Photos processed at the same time (CPU work; the server is shared with other projects).
+    photo_processing_concurrency: int = 2
+    photo_processing_wait_seconds: int = 20
     uploads_enabled: bool = True
-    # Upload requests (each one a batch of photos) per minute. Per IP: one venue Wi-Fi can carry
-    # ~200 guests behind a single address. Per event: ceiling for one invitation link.
-    uploads_per_minute: int = 60
-    event_uploads_per_minute: int = 150
+    # Upload requests per minute. The uploader sends one photo per request, two at a time. Per IP:
+    # a venue Wi-Fi puts ~300 guests behind one address. Per event: ceiling for one invitation.
+    uploads_per_minute: int = 600
+    event_uploads_per_minute: int = 1000
     logins_per_minute: int = 10
     messages_per_minute: int = 20
     rsvps_per_minute: int = 20

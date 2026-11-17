@@ -102,7 +102,9 @@ def delete_guest_admin(db: Session, event: Event, guest_id: str) -> None:
     db.commit()
 
 
-def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> tuple[Guest, str, bool]:
+def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit, link_guest: Guest | None = None) -> tuple[Guest, str, bool]:
+    """link_guest: in personal-link mode, the guest whose device opened the invitation. Their own
+    record is updated (the e-mail stays the invited one) and nobody else can be created."""
     if not event.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bu etkinlik artık aktif değil.")
     email = normalize_email(payload.email)
@@ -112,7 +114,11 @@ def submit_rsvp(db: Session, event: Event, payload: RsvpSubmit) -> tuple[Guest, 
         .one_or_none()
     )
     edit_token = payload.edit_token
-    if guest:
+    if link_guest is not None:
+        guest, edit_token = link_guest, ""
+    elif (event.invite_mode or "open") == "personal":
+        raise HTTPException(status_code=403, detail="Bu davetiye kişiye özeldir. Yanıtınızı size gönderilen kişisel bağlantıdan verin.")
+    elif guest:
         if not edit_token or not guest.rsvp_token_hash or not secrets.compare_digest(guest.rsvp_token_hash, hashlib.sha256(edit_token.encode()).hexdigest()):
             raise HTTPException(status_code=403, detail="Bu yanıt için kişisel RSVP bağlantınızı kullanın veya etkinlik sahibinden yeni bağlantı isteyin.")
     elif edit_token:

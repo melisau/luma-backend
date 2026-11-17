@@ -1,3 +1,4 @@
+import secrets
 import re
 import unicodedata
 
@@ -64,6 +65,8 @@ def event_to_admin(event: Event, role: str = "owner"):
         memory_delete_at=event.memory_delete_at,
         album_public=event.album_public,
         access_code_enabled=bool(event.access_code_hash),
+        invite_mode=event.invite_mode or "open",
+        upload_key=event.upload_key if role in ("owner", "editor") else None,
         role=role,
         name=event.name,
         slug=event.slug,
@@ -107,6 +110,9 @@ def create_event_admin(db: Session, payload: EventCreateAdmin, admin_id: str) ->
         guest_note=payload.guest_note.strip() if payload.guest_note else "",
         uploads_enabled=payload.uploads_enabled,
         is_active=payload.is_active,
+        # New invitations are personal: each guest gets their own link, bound to their devices.
+        invite_mode="personal",
+        upload_key=secrets.token_urlsafe(24),
     )
     db.add(event)
     db.commit()
@@ -128,6 +134,11 @@ def update_event_admin(db: Session, event: Event, payload: EventUpdateAdmin) -> 
             if deadline < datetime.now(timezone.utc) + timedelta(hours=24):
                 raise HTTPException(status_code=422, detail="Silme tarihi en az 24 saat sonrası olmalı.")
         event.memory_purged_at = None
+    reset_key = data.pop("reset_upload_key", False)
+    if data.get("invite_mode") is None:
+        data.pop("invite_mode", None)
+    if reset_key or (data.get("invite_mode") == "personal" and not event.upload_key):
+        event.upload_key = secrets.token_urlsafe(24)
     code = data.pop("access_code", None)
     if code is not None:
         from app.core.security import hash_password

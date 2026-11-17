@@ -200,7 +200,7 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Event-Token"],
+    allow_headers=["Authorization", "Content-Type", "X-Event-Token", "X-Upload-Key"],
 )
 
 app.include_router(events_router, prefix="/api", dependencies=[Depends(require_event_access)])

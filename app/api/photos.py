@@ -1,4 +1,9 @@
 import logging
+import threading
+import time
+
+import anyio
+from starlette.concurrency import run_in_threadpool
 import hashlib
 import secrets
 from datetime import timedelta
@@ -155,6 +160,23 @@ def list_event_photos(
     return [photo_public(item, event_token) for item in items]
 
 
+# Photo processing is CPU work (decode, rotate, resize, re-encode). It runs in a worker thread so
+# the rest of the site keeps answering, and at most PHOTO_PROCESSING_CONCURRENCY photos are in work
+# at once on the shared server. Requests waiting for a slot wait on the event loop, not in a thread:
+# a waiting thread would hold one of the threadpool tokens that every other page needs (measured:
+# invitation p95 10 s during a 300-photo burst). No slot in time: 503 + Retry-After, the uploader retries.
+_processing_slots = threading.BoundedSemaphore(max(1, get_settings().photo_processing_concurrency))
+
+
+async def _take_processing_slot(timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while not _processing_slots.acquire(blocking=False):
+        if time.monotonic() >= deadline:
+            return False
+        await anyio.sleep(0.05)
+    return True
+
+
 @router.post("/events/{event_token}/photos", response_model=PhotoUploadResponse)
 async def upload_event_photos(
     request: Request,
@@ -168,11 +190,22 @@ async def upload_event_photos(
     if not files:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="En az bir dosya gerekli.")
 
-    client_ip = request.client.host if request.client else "unknown"
-    enforce_upload_rate_limit(client_ip, event_token)
+    # The access check already used this request's session. Give its connection back to the pool
+    # right away (a quick rollback, done here so it does not queue for a worker thread while holding
+    # the connection): otherwise 150 waiting guests exhaust the pool and every page times out. The
+    # session reconnects by itself when the upload runs.
+    db.close()
+    # Personal links: count per guest, so 300 guests on one venue Wi-Fi do not share one IP budget.
+    guest_id = getattr(request.state, "luma_guest_id", None)
+    client_key = f"guest:{guest_id}" if guest_id else (request.client.host if request.client else "unknown")
+    await run_in_threadpool(enforce_upload_rate_limit, client_key, event_token)
 
+    if not await _take_processing_slot(get_settings().photo_processing_wait_seconds):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Şu anda çok sayıda fotoğraf işleniyor. Birkaç saniye sonra yeniden deneyin.",
+                            headers={"Retry-After": "5"})
     try:
-        saved = photos.upload_photos(db, event_token, files, uploader_name, caption)
+        saved = await run_in_threadpool(photos.upload_photos, db, event_token, files, uploader_name, caption)
     except HTTPException:
         raise
     except Exception:
@@ -181,6 +214,8 @@ async def upload_event_photos(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fotoğraf yüklenirken bir hata oluştu. Lütfen tekrar deneyin.",
         ) from None
+    finally:
+        _processing_slots.release()
 
     return PhotoUploadResponse(uploaded=[photo_public(item, event_token) for item in saved], duplicates_skipped=len(files)-len(saved))
 
