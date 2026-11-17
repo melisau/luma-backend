@@ -54,7 +54,8 @@ def _account_token(db: Session, admin: AdminUser, purpose: str, minutes: int) ->
 
 def _frontend_link(kind: str, token: str) -> str:
     base=(get_settings().public_base_url or "http://localhost:5500").rstrip("/")
-    return f"{base}/?{kind}_token={token}"
+    # app.html handles these links; the landing page (/) does not load that code.
+    return f"{base}/app.html?{kind}_token={token}"
 
 def _consume_token(db: Session, raw: str, purpose: str, *, lock: bool = False) -> AccountToken:
     query = db.query(AccountToken).filter(
