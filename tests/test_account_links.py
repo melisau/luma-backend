@@ -17,7 +17,7 @@ def _link(body):
 
 
 def test_verification_link_opens_the_app(client, outbox):
-    response = client.post("/api/admin/register", json={"email": "yeni@test.com", "password": "testpassword123"})
+    response = client.post("/api/admin/register", json={"email": "yeni@test.com", "password": "testpassword123", "accept_terms": True})
     assert response.status_code == 201
     link = _link(outbox[-1][2])
     assert "/app.html?verify_token=" in link

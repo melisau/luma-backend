@@ -21,7 +21,7 @@ def private_signup(client, monkeypatch):
 
 
 def _register(client, email, password="testpassword123"):
-    return client.post("/api/admin/register", json={"email": email, "password": password})
+    return client.post("/api/admin/register", json={"email": email, "password": password, "accept_terms": True})
 
 
 def test_new_and_existing_addresses_get_the_same_answer(client, private_signup):
@@ -52,12 +52,12 @@ def test_login_waits_for_verification(client, private_signup):
     _register(client, "yeni@test.com")
     wrong = client.post("/api/admin/login", json={"email": "yeni@test.com", "password": "wrong-password"})
     assert wrong.status_code == 401
-    blocked = client.post("/api/admin/login", json={"email": "yeni@test.com", "password": "testpassword123"})
+    blocked = client.post("/api/admin/login", json={"email": "yeni@test.com", "password": "testpassword123", "accept_terms": True})
     assert blocked.status_code == 403
     assert "doğrulayın" in blocked.json()["detail"]
     token = re.search(r"verify_token=(\S+)", private_signup[-1][2]).group(1)
     assert client.post("/api/admin/email-verification/confirm", json={"token": token}).status_code == 200
-    ok = client.post("/api/admin/login", json={"email": "yeni@test.com", "password": "testpassword123"})
+    ok = client.post("/api/admin/login", json={"email": "yeni@test.com", "password": "testpassword123", "accept_terms": True})
     assert ok.status_code == 200 and ok.json()["access_token"]
 
 
