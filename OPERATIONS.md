@@ -34,7 +34,7 @@ E-posta için `EMAIL_BACKEND=smtp` ve SMTP alanları kullanılır. Alan adının
 
 - `lumaevent-offsite` kapsayıcısı günde bir kez `/opt/lumaevent/backups` içindeki veritabanı yedeklerini `b2:<B2_BUCKET>/db` altına kopyalar ve fotoğraf deposunu `b2:<B2_BUCKET>/photos` altına eşler.
 - Saklama süresi gizlilik metniyle aynıdır (`BACKUP_KEEP_DAYS`, 14 gün): eski yedekler ve Luma'da silinen fotoğraflar B2'den de kalıcı silinir (`--b2-hard-delete`).
-- Gereken ayarlar `.env.vds` içinde: `B2_ACCOUNT_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET`. Yoksa kapsayıcı bekler, diğerleri etkilenmez.
+- Gereken ayarlar `.env.vds` içinde: `B2_ACCOUNT_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET`. Yoksa kapsayıcı bekler, diğerleri etkilenmez. Girmek için sunucuda: `sh /opt/lumaevent/luma-backend/deploy/set-b2.sh` (anahtar ekranda görünmez, ilk yedeği hemen çalıştırır).
 - Son çalışmanın sonucu `/opt/lumaevent/backups/offsite-status.txt` dosyasında; başarısız olursa Sentry'ye hata düşer.
 - Elle çalıştırma: `docker exec lumaevent-offsite sh /offsite.sh once`
 - Geri yükleme provası (canlıya dokunmaz): `sh /opt/lumaevent/luma-backend/deploy/restore-drill.sh`. B2'deki en son yedeği ağsız, geçici bir PostgreSQL'e yükler, tablo sayılarını canlıyla yan yana yazar, sonra geçici kapsayıcıyı siler.
