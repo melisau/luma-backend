@@ -1,0 +1,35 @@
+name: Uptime
+
+# Checks the live site every 5 minutes. A failed run makes GitHub email the
+# repository owner (Settings > Notifications > Actions: "Send notifications for
+# failed workflows only"). GitHub may delay scheduled runs by a few minutes and
+# pauses schedules after 60 days without repository activity; re-enable from
+# the Actions tab if that happens.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check https://luma.melisauyar.com/health
+        run: |
+          # Three tries, 20 s apart, so one dropped request does not page anyone.
+          for attempt in 1 2 3; do
+            body=$(curl -fsS --max-time 15 https://luma.melisauyar.com/health) && \
+              echo "$body" | grep -q '"status":"ok"' && { echo "OK: $body"; exit 0; }
+            echo "Attempt $attempt failed: ${body:-no response}"
+            sleep 20
+          done
+          echo "::error::Luma Event /health did not answer OK three times in a row"
+          exit 1

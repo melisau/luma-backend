@@ -85,6 +85,33 @@ services:
       db:
         condition: service_healthy
 
+  # Daily copy of the dumps and the photo store to Backblaze B2 (off this server).
+  # Needs B2_ACCOUNT_ID, B2_APPLICATION_KEY and B2_BUCKET in .env.vds; idles until set.
+  offsite:
+    container_name: lumaevent-offsite
+    image: rclone/rclone:1.68.2
+    restart: unless-stopped
+    environment:
+      B2_BUCKET: ${B2_BUCKET:-luma-event-backups}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      RCLONE_CONFIG_B2_TYPE: b2
+      RCLONE_CONFIG_B2_ACCOUNT: ${B2_ACCOUNT_ID:-}
+      RCLONE_CONFIG_B2_KEY: ${B2_APPLICATION_KEY:-}
+      RCLONE_CONFIG_PHOTOS_TYPE: s3
+      RCLONE_CONFIG_PHOTOS_PROVIDER: SeaweedFS
+      RCLONE_CONFIG_PHOTOS_ENDPOINT: http://lumaevent-storage:8333
+      RCLONE_CONFIG_PHOTOS_ACCESS_KEY_ID: luma-app
+      RCLONE_CONFIG_PHOTOS_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY}
+    volumes:
+      - ./offsite.sh:/offsite.sh:ro
+      - ../../backups:/backups
+    entrypoint: ["sh", "/offsite.sh"]
+    networks: [default]
+    depends_on:
+      storage:
+        condition: service_healthy
+
   # Photo storage (S3-compatible). Only the API's key can read or write.
   storage:
     container_name: lumaevent-storage
