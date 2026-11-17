@@ -37,3 +37,15 @@ def test_presentation_migration_preserves_existing_event(tmp_path):
             module.upgrade()
         assert connection.execute(sa.text("SELECT name,presentation FROM events")).one() == ("Birthday", "{}")
     engine.dispose()
+
+
+def test_event_type_font_and_look_roundtrip(client, admin_headers):
+    url = f"/api/admin/events/{TOKEN}/invitation"
+    public_url = f"/api/events/{TOKEN}/invitation"
+    defaults = client.get(public_url).json()["presentation"]
+    assert (defaults["event_type"], defaults["font"], defaults["look"]) == ("wedding", "classic", "")
+    chosen = {"event_type": "henna", "font": "script", "look": "kina-gecesi"}
+    assert client.patch(url, headers=admin_headers, json={"presentation": chosen}).status_code == 200
+    assert client.get(public_url).json()["presentation"].items() >= chosen.items()
+    for invalid in ({"event_type": "funeral"}, {"font": "comic"}, {"look": "x" * 41}):
+        assert client.patch(url, headers=admin_headers, json={"presentation": invalid}).status_code == 422
