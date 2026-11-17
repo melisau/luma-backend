@@ -10,7 +10,7 @@ def _auth_headers(client, email, password):
 def test_admin_event_isolation(client, admin_headers):
     other = client.post(
         "/api/admin/register",
-        json={"email": "diger@test.com", "password": "testpassword123", "display_name": "Diğer Admin"},
+        json={"accept_terms": True, "email": "diger@test.com", "password": "testpassword123", "display_name": "Diğer Admin"},
     )
     assert other.status_code == 201
     other_headers = _auth_headers(client, "diger@test.com", "testpassword123")
@@ -44,7 +44,7 @@ def test_admin_event_isolation(client, admin_headers):
 def test_new_user_starts_with_empty_event_list(client):
     register = client.post(
         "/api/admin/register",
-        json={"email": "bos@test.com", "password": "testpassword123"},
+        json={"accept_terms": True, "email": "bos@test.com", "password": "testpassword123"},
     )
     assert register.status_code == 201
     headers = _auth_headers(client, "bos@test.com", "testpassword123")

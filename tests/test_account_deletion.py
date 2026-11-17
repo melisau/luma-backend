@@ -40,7 +40,7 @@ def _setup_account_with_data(client, admin_headers):
     assert client.post("/api/admin/contacts", headers=admin_headers, json={"name": "Ayşe", "email": "ayse@test.com"}).status_code == 201
     assert client.post("/api/admin/password-reset/request", json={"email": "admin@test.com"}).status_code == 202
     # Someone else's event where this account is a team member.
-    other = client.post("/api/admin/register", json={"email": "other@test.com", "password": "otherpassword123"})
+    other = client.post("/api/admin/register", json={"accept_terms": True, "email": "other@test.com", "password": "otherpassword123"})
     other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
     other_event = client.post("/api/admin/events", headers=other_headers, json={"name": "Başkasının etkinliği"}).json()
     other_token = other_event["private_token"]
@@ -104,5 +104,5 @@ def test_delete_account_removes_everything_it_owns(client, admin_headers, monkey
 
 def test_deleted_email_can_register_again(client, admin_headers):
     assert client.request("DELETE", "/api/admin/me", headers=admin_headers, json={"password": "testpassword123"}).status_code == 204
-    again = client.post("/api/admin/register", json={"email": "admin@test.com", "password": "newpassword123"})
+    again = client.post("/api/admin/register", json={"accept_terms": True, "email": "admin@test.com", "password": "newpassword123"})
     assert again.status_code == 201

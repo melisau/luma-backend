@@ -43,7 +43,7 @@ def test_batch_duplicate_and_invalid_upload_is_atomic(client,admin_headers):
 
 
 def test_album_ownership_and_size_limit(client,admin_headers,monkeypatch):
-    other=client.post('/api/admin/register',json={'email':'other@test.com','password':'OtherPassword123!'}).json()
+    other=client.post('/api/admin/register',json={"accept_terms": True, 'email':'other@test.com','password':'OtherPassword123!'}).json()
     other_headers={'Authorization':f'Bearer {other["access_token"]}'}
     assert client.get(f'/api/admin/events/{TOKEN}/album.zip',headers=other_headers).status_code==404
     upload(client,image_bytes())

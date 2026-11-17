@@ -45,6 +45,9 @@ class AdminUser(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When and which version of the terms of use the owner accepted at sign-up (None: before terms existed).
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    terms_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     contacts: Mapped[list["Contact"]] = relationship(back_populates="admin", cascade="all, delete-orphan")

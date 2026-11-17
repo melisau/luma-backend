@@ -1,7 +1,7 @@
 def test_admin_register_and_login(client):
     register = client.post(
         "/api/admin/register",
-        json={
+        json={"accept_terms": True,
             "email": "yeni@test.com",
             "password": "testpassword123",
             "display_name": "Yeni Kullanıcı",
@@ -24,13 +24,13 @@ def test_admin_register_and_login(client):
 def test_admin_register_duplicate_email(client):
     first = client.post(
         "/api/admin/register",
-        json={"email": "dup@test.com", "password": "testpassword123"},
+        json={"accept_terms": True, "email": "dup@test.com", "password": "testpassword123"},
     )
     assert first.status_code == 201
 
     second = client.post(
         "/api/admin/register",
-        json={"email": "dup@test.com", "password": "testpassword123"},
+        json={"accept_terms": True, "email": "dup@test.com", "password": "testpassword123"},
     )
     assert second.status_code == 409
     assert "kayıtlı" in second.json()["detail"].lower()
@@ -39,6 +39,6 @@ def test_admin_register_duplicate_email(client):
 def test_admin_register_short_password(client):
     response = client.post(
         "/api/admin/register",
-        json={"email": "short@test.com", "password": "1234567"},
+        json={"accept_terms": True, "email": "short@test.com", "password": "1234567"},
     )
     assert response.status_code == 422

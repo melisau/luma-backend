@@ -65,6 +65,8 @@ class AdminRegisterRequest(BaseModel):
     email: str
     password: str = Field(min_length=8)
     display_name: str | None = Field(default=None, max_length=255)
+    # The sign-up form's required "I accept the terms of use" box.
+    accept_terms: bool = False
 
 
 class AdminLoginResponse(BaseModel):
