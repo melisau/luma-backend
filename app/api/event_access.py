@@ -78,7 +78,7 @@ _UPLOAD_KEY_GET = ("", "invitation", "cover", "memory-cover", "music")
 def _personal_access(request: Request, db: Session, event: Event, path: str) -> bool:
     """True when the request may go on; raises 401 otherwise."""
     rest = path.split(f"/api/events/{event.private_token}", 1)[1].strip("/") if path.startswith("/api/events/") else None
-    if rest in ("guest-session", "unlock") and request.method == "POST":
+    if rest in ("guest-session", "upload-session", "unlock") and request.method == "POST":
         return True
     if _owner_preview_valid(request, event):
         return True
@@ -86,13 +86,34 @@ def _personal_access(request: Request, db: Session, event: Event, path: str) -> 
     if guest:
         request.state.luma_guest_id = guest.id
         return True
-    if rest is not None and guest_access.upload_key_valid(event, request.headers.get("x-upload-key")):
+    if rest is not None and (guest_access.upload_key_valid(event, request.headers.get("x-upload-key"))
+                             or _upload_cookie_valid(request, event)):
         allowed = (request.method == "GET" and (rest in _UPLOAD_KEY_GET or rest.startswith("visual-assets/"))) or (
             request.method == "POST" and rest == "photos")
         if allowed:
             request.state.luma_upload_key = True
             return True
     raise guest_access.personal_link_required()
+
+
+def upload_cookie_name(event):
+    return 'luma_upload_'+hashlib.sha256(event.id.encode()).hexdigest()[:16]
+
+
+def upload_signature(event, expires):
+    # Includes the key, so renewing the key in the panel ends every QR session at once.
+    return hmac.new(get_settings().secret_key.encode(),f'upload:{event.id}:{event.upload_key}:{expires}'.encode(),hashlib.sha256).hexdigest()
+
+
+def _upload_cookie_valid(request: Request, event: Event) -> bool:
+    if not guest_access.upload_key_valid(event, event.upload_key):  # outside the event days
+        return False
+    raw=request.cookies.get(upload_cookie_name(event),'')
+    try:
+        expires,digest=raw.split('.',1)
+        return int(expires)>int(time.time()) and hmac.compare_digest(upload_signature(event,expires),digest)
+    except (ValueError,TypeError):
+        return False
 
 
 def preview_cookie_name(event):
@@ -180,3 +201,25 @@ def guest_session(event_token: str,payload: GuestSessionInput,request: Request,r
         guest_access.send_code(db,event,guest)
         detail='Bu davetiye başka bir cihazda zaten açıldı. Devam etmek için e-postanıza gönderdiğimiz kodu girin.'
     return JSONResponse(status_code=403,content={'detail':detail,'code_required':True,'email_hint':guest_access.email_hint(guest.email)},headers={'Cache-Control':'no-store'})
+
+
+
+class UploadSessionInput(BaseModel):
+    key: str=Field(min_length=1,max_length=64)
+
+
+@router.post('/events/{event_token}/upload-session')
+def upload_session(event_token: str,payload: UploadSessionInput,request: Request,response: Response,db: Session=Depends(get_db)):
+    """Venue QR (personal-link events): turns the upload key into a cookie, so the upload page and its
+    images load without the key on every request. Upload only, on the event days."""
+    access_limiter.check(f'upload:{request.client.host if request.client else "unknown"}:{event_token}',30,detail='Çok fazla deneme. Bir dakika sonra tekrar deneyin.')
+    response.headers['Cache-Control']='no-store'
+    event=db.query(Event).filter(Event.private_token==event_token,Event.is_active.is_(True)).one_or_none()
+    if not event:raise HTTPException(status_code=404,detail='Davetiye bulunamadı.')
+    if not guest_access.is_personal(event):
+        return {'mode':'open'}
+    if not guest_access.upload_key_valid(event,payload.key):
+        raise HTTPException(status_code=403,detail='Bu QR kod şu anda geçerli değil. Fotoğraf yükleme etkinlik günlerinde açıktır.')
+    expires=str(int(time.time())+24*60*60)
+    response.set_cookie(upload_cookie_name(event),f'{expires}.{upload_signature(event,expires)}',max_age=24*60*60,httponly=True,secure=request.url.scheme=='https',samesite='lax',path='/api')
+    return {'mode':'upload'}

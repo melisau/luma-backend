@@ -155,6 +155,20 @@ def test_venue_qr_key_allows_only_upload_on_event_days(client, admin_headers, pe
     assert client.get(f"{base}/invitation", headers=key).status_code == 401
 
 
+def test_venue_qr_session_cookie(client, admin_headers, personal):
+    base = f"/api/events/{personal['token']}"
+    assert client.post(f"{base}/upload-session", json={"key": "wrong"}).status_code == 403
+    assert client.post(f"{base}/upload-session", json={"key": personal["event"]["upload_key"]}).json() == {"mode": "upload"}
+    assert client.get(f"{base}/invitation").status_code == 200
+    assert client.get(f"{base}/cover").status_code != 401
+    assert client.get(f"{base}/photos").status_code == 401
+    assert client.get(f"{base}/messages").status_code == 401
+    # Renewing the key in the panel ends QR sessions at once.
+    owner = _device(client)
+    owner.patch(f"/api/admin/events/{personal['token']}", headers=admin_headers, json={"reset_upload_key": True})
+    assert client.get(f"{base}/invitation").status_code == 401
+
+
 def test_owner_preview_and_mode_switch(client, admin_headers, personal):
     owner = _device(client)
     assert owner.post(f"/api/admin/events/{personal['token']}/access-preview", headers=admin_headers).status_code == 200
