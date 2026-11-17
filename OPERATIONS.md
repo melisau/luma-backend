@@ -38,4 +38,6 @@ E-posta için `EMAIL_BACKEND=smtp` ve SMTP alanları kullanılır. Alan adının
 - Son çalışmanın sonucu `/opt/lumaevent/backups/offsite-status.txt` dosyasında; başarısız olursa Sentry'ye hata düşer.
 - Elle çalıştırma: `docker exec lumaevent-offsite sh /offsite.sh once`
 - Geri yükleme provası (canlıya dokunmaz): `sh /opt/lumaevent/luma-backend/deploy/restore-drill.sh`. B2'deki en son yedeği ağsız, geçici bir PostgreSQL'e yükler, tablo sayılarını canlıyla yan yana yazar, sonra geçici kapsayıcıyı siler.
-- Gerçek geri yükleme: önce prova, sonra bakım penceresinde `pg_restore --clean` ile; fotoğraflar `rclone sync b2:<B2_BUCKET>/photos photos:luma-private` ile geri gelir.
+- **İndirme her zaman `b2s3:` üzerinden** (B2'nin S3 adresi, `B2_S3_ENDPOINT`). B2'nin kendi indirme adresleri (`f00N.backblazeb2.com`) Türkiye'den engelli; `b2:` ile yükleme ve silme çalışır ama indirme sessizce boş döner.
+- Gerçek geri yükleme: önce prova, sonra bakım penceresinde `pg_restore --clean` ile; fotoğraflar `docker exec lumaevent-offsite rclone sync b2s3:<B2_BUCKET>/photos photos:luma-private` ile geri gelir.
+- Kova şu an ABD Doğu bölgesinde (us-east-005). Backblaze bir ABD şirketi olduğu için bu bir yurt dışı aktarımdır; aydınlatma metninde ve avukat kontrolünde (A9 ile birlikte) belirtilmeli.

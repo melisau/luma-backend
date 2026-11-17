@@ -98,6 +98,13 @@ services:
       RCLONE_CONFIG_B2_TYPE: b2
       RCLONE_CONFIG_B2_ACCOUNT: ${B2_ACCOUNT_ID:-}
       RCLONE_CONFIG_B2_KEY: ${B2_APPLICATION_KEY:-}
+      # Same bucket over B2's S3 API, used for downloads (restore): B2's native
+      # download hosts (f00N.backblazeb2.com) are blocked from Turkey.
+      RCLONE_CONFIG_B2S3_TYPE: s3
+      RCLONE_CONFIG_B2S3_PROVIDER: Other
+      RCLONE_CONFIG_B2S3_ENDPOINT: ${B2_S3_ENDPOINT:-https://s3.us-east-005.backblazeb2.com}
+      RCLONE_CONFIG_B2S3_ACCESS_KEY_ID: ${B2_ACCOUNT_ID:-}
+      RCLONE_CONFIG_B2S3_SECRET_ACCESS_KEY: ${B2_APPLICATION_KEY:-}
       RCLONE_CONFIG_PHOTOS_TYPE: s3
       RCLONE_CONFIG_PHOTOS_PROVIDER: SeaweedFS
       RCLONE_CONFIG_PHOTOS_ENDPOINT: http://lumaevent-storage:8333

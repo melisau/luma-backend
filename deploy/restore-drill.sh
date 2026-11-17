@@ -10,13 +10,15 @@ DRILL=lumaevent-restore-drill
 WORK=$(mktemp -d /tmp/luma-restore-drill.XXXXXX)
 trap 'docker rm -f "$DRILL" >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
 
-# Pull the newest dump from B2 with the offsite container's own credentials.
-newest=$(docker exec lumaevent-offsite sh -c 'rclone lsf "b2:$B2_BUCKET/db" --include "luma-*.dump"' | sort | tail -1)
+# Pull the newest dump from B2 with the offsite container's own credentials,
+# over the S3 API (B2's native download hosts are blocked from Turkey).
+newest=$(docker exec lumaevent-offsite sh -c 'rclone lsf "b2s3:$B2_BUCKET/db" --include "luma-*.dump" 2>/dev/null' | sort | tail -1)
 [ -n "$newest" ] || { echo "No dump found in B2" >&2; exit 1; }
 echo "Newest dump in B2: $newest"
-docker exec lumaevent-offsite sh -c "rclone copyto \"b2:\$B2_BUCKET/db/$newest\" /tmp/drill.dump"
-docker cp "lumaevent-offsite:/tmp/drill.dump" "$WORK/drill.dump"
-docker exec lumaevent-offsite rm -f /tmp/drill.dump
+docker exec lumaevent-offsite sh -c "rclone cat \"b2s3:\$B2_BUCKET/db/$newest\" 2>/dev/null" > "$WORK/drill.dump"
+[ "$(head -c 5 "$WORK/drill.dump")" = "PGDMP" ] || { echo "Downloaded file is not a PostgreSQL dump" >&2; exit 1; }
+echo "Downloaded $(wc -c < "$WORK/drill.dump") bytes."
+chmod 644 "$WORK/drill.dump"; chmod 755 "$WORK"
 
 # Empty database, no network: nothing can reach it and it reaches nothing.
 docker run -d --name "$DRILL" --network none -e POSTGRES_PASSWORD=drill -e POSTGRES_DB=luma \
