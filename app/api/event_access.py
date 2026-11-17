@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.core.security import verify_password
 from app.db.database import get_db
 from app.db.models import Event, Photo
+from app.services import guest_access
 from app.services.rate_limit import RateLimiter
 
 router=APIRouter()
@@ -56,6 +57,9 @@ def _check_event_access(request: Request, db: Session):
     from app.services.memory_retention import memories_expired
     if event and memories_expired(event) and (path.startswith('/api/photos/') or path.rstrip('/').endswith(('/photos','/messages'))):
         raise HTTPException(status_code=410,detail='Bu etkinliğin anı saklama süresi doldu.')
+    if event and event.is_active and guest_access.is_personal(event):
+        if _personal_access(request, db, event, path):
+            return  # the personal link is stronger than the shared access code
     if not event or not event.is_active or not event.access_code_hash:return
     raw=request.cookies.get(cookie_name(event),'')
     try:
@@ -64,6 +68,48 @@ def _check_event_access(request: Request, db: Session):
     except (ValueError,TypeError):valid=False
     if not valid:
         raise HTTPException(status_code=423,detail='Bu davetiye için erişim kodu gerekiyor.')
+
+
+# Requests a venue QR (upload key) may make: see the invitation, send photos. Not the album, the
+# guestbook or RSVPs.
+_UPLOAD_KEY_GET = ("", "invitation", "cover", "memory-cover", "music")
+
+
+def _personal_access(request: Request, db: Session, event: Event, path: str) -> bool:
+    """True when the request may go on; raises 401 otherwise."""
+    rest = path.split(f"/api/events/{event.private_token}", 1)[1].strip("/") if path.startswith("/api/events/") else None
+    if rest in ("guest-session", "unlock") and request.method == "POST":
+        return True
+    if _owner_preview_valid(request, event):
+        return True
+    guest = guest_access.device_guest(db, event, request)
+    if guest:
+        request.state.luma_guest_id = guest.id
+        return True
+    if rest is not None and guest_access.upload_key_valid(event, request.headers.get("x-upload-key")):
+        allowed = (request.method == "GET" and (rest in _UPLOAD_KEY_GET or rest.startswith("visual-assets/"))) or (
+            request.method == "POST" and rest == "photos")
+        if allowed:
+            request.state.luma_upload_key = True
+            return True
+    raise guest_access.personal_link_required()
+
+
+def preview_cookie_name(event):
+    return 'luma_preview_'+hashlib.sha256(event.id.encode()).hexdigest()[:16]
+
+
+def preview_signature(event, expires):
+    return hmac.new(get_settings().secret_key.encode(),f'preview:{event.id}:{expires}'.encode(),hashlib.sha256).hexdigest()
+
+
+def _owner_preview_valid(request: Request, event: Event) -> bool:
+    raw=request.cookies.get(preview_cookie_name(event),'')
+    try:
+        expires,digest=raw.split('.',1)
+        return int(expires)>int(time.time()) and hmac.compare_digest(preview_signature(event,expires),digest)
+    except (ValueError,TypeError):
+        return False
 
 
 class UnlockInput(BaseModel):
@@ -91,5 +137,46 @@ def grant_owner_preview(event_token: str,request: Request,response: Response,db:
     event=get_admin_event_or_404(db,event_token,admin.id,write=False)
     expires=str(int(time.time())+TTL)
     response.set_cookie(cookie_name(event),f'{expires}.{signature(event,expires)}',max_age=TTL,httponly=True,secure=request.url.scheme=='https',samesite='lax',path='/api')
+    # Lets the owner and their team see a personal-link invitation as guests do.
+    response.set_cookie(preview_cookie_name(event),f'{expires}.{preview_signature(event,expires)}',max_age=TTL,httponly=True,secure=request.url.scheme=='https',samesite='lax',path='/api')
     response.headers['Cache-Control']='no-store'
     return {'unlocked':True}
+
+
+class GuestSessionInput(BaseModel):
+    guest_id: str=Field(min_length=1,max_length=36)
+    token: str=Field(min_length=1,max_length=64)
+    code: str|None=Field(default=None,max_length=12)
+
+
+def _guest_summary(guest):
+    return {'id':guest.id,'name':guest.name,'email':guest.email,'people':guest.people,'status':guest.status}
+
+
+@router.post('/events/{event_token}/guest-session')
+def guest_session(event_token: str,payload: GuestSessionInput,request: Request,response: Response,db: Session=Depends(get_db)):
+    """Opens a personal invitation link on this device (see app/services/guest_access.py)."""
+    from fastapi.responses import JSONResponse
+    access_limiter.check(f'guest:{request.client.host if request.client else "unknown"}:{event_token}',20,detail='Çok fazla deneme. Bir dakika sonra tekrar deneyin.')
+    response.headers['Cache-Control']='no-store'
+    event=db.query(Event).filter(Event.private_token==event_token,Event.is_active.is_(True)).one_or_none()
+    if not event:raise HTTPException(status_code=404,detail='Davetiye bulunamadı.')
+    if not guest_access.is_personal(event):
+        return {'mode':'open'}
+    current=guest_access.device_guest(db,event,request)
+    if current and current.id==payload.guest_id:
+        return {'mode':'personal','guest':_guest_summary(current)}
+    guest=guest_access.guest_from_link(db,event,payload.guest_id,payload.token)
+    if not guest:
+        raise HTTPException(status_code=403,detail='Bu bağlantı geçersiz ya da yenilenmiş. Etkinlik sahibinden yeni bağlantı isteyin.')
+    from app.db.models import GuestDevice
+    devices=db.query(GuestDevice).filter(GuestDevice.guest_id==guest.id).count()
+    if devices<guest_access.device_allowance(guest) or (payload.code and guest_access.check_code(db,guest,payload.code)):
+        guest_access.bind_device(db,guest,request,response,event)
+        return {'mode':'personal','guest':_guest_summary(guest)}
+    if payload.code:
+        detail='Kod hatalı veya süresi dolmuş. Yeni kod için tekrar deneyin.'
+    else:
+        guest_access.send_code(db,event,guest)
+        detail='Bu davetiye başka bir cihazda zaten açıldı. Devam etmek için e-postanıza gönderdiğimiz kodu girin.'
+    return JSONResponse(status_code=403,content={'detail':detail,'code_required':True,'email_hint':guest_access.email_hint(guest.email)},headers={'Cache-Control':'no-store'})

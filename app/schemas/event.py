@@ -1,5 +1,6 @@
 from app.schemas.dates import EventDateModel
 from datetime import datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -33,6 +34,8 @@ class EventPublic(MemoryPolicyModel):
 
 class EventAdmin(EventPublic):
     access_code_enabled: bool = False
+    invite_mode: str = "open"
+    upload_key: str | None = None
     role: str = "owner"
     private_token: str
     invite_path: str
@@ -54,6 +57,8 @@ class EventCreateAdmin(EventDateModel):
 
 class EventUpdateAdmin(MemoryPolicyModel):
     confirm_memory_deletion: bool = False
+    invite_mode: Literal["open", "personal"] | None = None
+    reset_upload_key: bool = False
     album_public: bool | None = None
     access_code: str | None = Field(default=None, max_length=64)
     publish_at: datetime | None = None
