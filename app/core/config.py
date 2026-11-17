@@ -95,6 +95,9 @@ class Settings(BaseSettings):
         if errors:
             raise RuntimeError("Üretim yapılandırması geçersiz: " + "; ".join(errors))
 
+    # Version of the terms of use / privacy texts shown at sign-up; stored with each acceptance.
+    terms_version: str = "2026-11-taslak"
+
     serve_frontend: bool = True
     frontend_path: Path = ROOT.parent / "luma-frontend"
 

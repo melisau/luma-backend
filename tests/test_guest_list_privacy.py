@@ -27,7 +27,7 @@ def test_public_invitation_carries_no_guest_data(client, admin_headers):
 
 def test_unrelated_account_cannot_list_guests(client, admin_headers):
     _add_guest(client, admin_headers)
-    stranger = client.post("/api/admin/register", json={"email": "stranger@test.com", "password": "strangerpass123"})
+    stranger = client.post("/api/admin/register", json={"accept_terms": True, "email": "stranger@test.com", "password": "strangerpass123"})
     headers = {"Authorization": f"Bearer {stranger.json()['access_token']}"}
     assert client.get(f"/api/admin/events/{TOKEN}/guests", headers=headers).status_code == 404
 
@@ -36,7 +36,7 @@ def test_planner_and_team_can_list_guests(client, admin_headers):
     _add_guest(client, admin_headers)
     assert [g["email"] for g in client.get(f"/api/admin/events/{TOKEN}/guests", headers=admin_headers).json()] == ["zeynep@test.com"]
 
-    helper = client.post("/api/admin/register", json={"email": "helper@test.com", "password": "helperpass1234"})
+    helper = client.post("/api/admin/register", json={"accept_terms": True, "email": "helper@test.com", "password": "helperpass1234"})
     helper_headers = {"Authorization": f"Bearer {helper.json()['access_token']}"}
     added = client.post(f"/api/admin/events/{TOKEN}/members", headers=admin_headers, json={"email": "helper@test.com", "role": "viewer"})
     assert added.status_code == 201

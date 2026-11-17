@@ -63,11 +63,11 @@ def test_registration_has_hourly_limit(client, monkeypatch):
     for index in range(2):
         response = client.post(
             "/api/admin/register",
-            json={"email": f"limit{index}@test.com", "password": "testpassword123"},
+            json={"accept_terms": True, "email": f"limit{index}@test.com", "password": "testpassword123"},
         )
         assert response.status_code == 201
     blocked = client.post(
         "/api/admin/register",
-        json={"email": "limit-extra@test.com", "password": "testpassword123"},
+        json={"accept_terms": True, "email": "limit-extra@test.com", "password": "testpassword123"},
     )
     assert blocked.status_code == 429

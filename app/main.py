@@ -142,6 +142,12 @@ def mount_frontend(app: FastAPI, frontend_dir) -> None:
     def landing_alias():
         return FileResponse(frontend_dir / "index.html")
 
+    # Legal pages: /gizlilik, /aydinlatma, /kosullar
+    for slug in ("gizlilik", "aydinlatma", "kosullar"):
+        def legal_page(_slug: str = slug):
+            return FileResponse(frontend_dir / f"{_slug}.html")
+        app.add_api_route(f"/{slug}", legal_page, methods=["GET"], include_in_schema=False)
+
     @app.get("/")
     def landing_page():
         return FileResponse(frontend_dir / "index.html")

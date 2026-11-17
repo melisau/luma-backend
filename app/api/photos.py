@@ -258,6 +258,9 @@ def admin_register(payload: AdminRegisterRequest, request: Request, db: Session 
     client_ip = request.client.host if request.client else "unknown"
     enforce_login_rate_limit(client_ip)
     enforce_register_rate_limit(client_ip)
+    if not payload.accept_terms:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Kayıt için Kullanım Koşulları'nı kabul etmeniz gerekir.")
     email = payload.email.strip().lower()
     if not email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Geçerli bir e-posta adresi girin.")
@@ -268,6 +271,8 @@ def admin_register(payload: AdminRegisterRequest, request: Request, db: Session 
         email=email,
         password_hash=hash_password(payload.password),
         display_name=display_name,
+        terms_accepted_at=datetime.now(timezone.utc),
+        terms_version=get_settings().terms_version,
     )
     db.add(admin)
     db.commit()

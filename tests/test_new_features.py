@@ -27,7 +27,7 @@ def test_signature_memory_copy_cover_and_scheduled_publish(client,admin_headers)
 def test_groups_tables_and_collaborator_roles(client,admin_headers):
     guest=client.post(f"/api/admin/events/{TOKEN}/guests",headers=admin_headers,json={"name":"Masa Misafiri","email":"masa@test.com","group_name":"Aile","table_name":"Masa 2"})
     assert guest.status_code==201 and guest.json()["group_name"]=="Aile"
-    other=client.post("/api/admin/register",json={"email":"editor@test.com","password":"password123"})
+    other=client.post("/api/admin/register",json={"accept_terms": True, "email":"editor@test.com","password":"password123"})
     editor_headers={"Authorization":f"Bearer {other.json()['access_token']}"}
     added=client.post(f"/api/admin/events/{TOKEN}/members",headers=admin_headers,json={"email":"editor@test.com","role":"editor"})
     assert added.status_code==201
@@ -36,7 +36,7 @@ def test_groups_tables_and_collaborator_roles(client,admin_headers):
     assert client.delete(f"/api/admin/events/{TOKEN}",headers=editor_headers).status_code==404
 
 def test_password_reset_and_email_verification_tokens(client):
-    registered=client.post("/api/admin/register",json={"email":"mail@test.com","password":"password123"})
+    registered=client.post("/api/admin/register",json={"accept_terms": True, "email":"mail@test.com","password":"password123"})
     assert registered.status_code==201
     db=db_module.SessionLocal()
     try:

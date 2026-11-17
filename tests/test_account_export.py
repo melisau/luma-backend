@@ -31,7 +31,7 @@ def test_export_contains_the_accounts_data_and_no_secrets(client, admin_headers)
     client.post(f"/api/events/{TOKEN}/messages", json={"name": "Zeynep", "message": "Çok güzeldi!"})
     client.post(f"/api/events/{TOKEN}/photos", data={"uploader_name": "Zeynep"}, files=[("files", ("a.jpg", _jpeg(), "image/jpeg"))])
     client.post("/api/admin/contacts", headers=admin_headers, json={"name": "Ayşe", "email": "ayse@test.com"})
-    other = client.post("/api/admin/register", json={"email": "other@test.com", "password": "otherpassword123"})
+    other = client.post("/api/admin/register", json={"accept_terms": True, "email": "other@test.com", "password": "otherpassword123"})
     other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
     other_token = client.post("/api/admin/events", headers=other_headers, json={"name": "Ortak etkinlik"}).json()["private_token"]
     client.post(f"/api/admin/events/{other_token}/members", headers=other_headers, json={"email": "admin@test.com", "role": "editor"})

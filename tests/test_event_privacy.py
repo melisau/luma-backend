@@ -59,7 +59,7 @@ def test_private_album_blocks_original_and_thumb_but_allows_uploads(client,admin
 
 def test_unlock_rate_limit_expiry_and_owner_isolation(client,admin_headers,monkeypatch):
     configure(client,admin_headers,access_code='TestCode123')
-    other=client.post('/api/admin/register',json={'email':'other@test.com','password':'OtherPassword123!'}).json()
+    other=client.post('/api/admin/register',json={"accept_terms": True, 'email':'other@test.com','password':'OtherPassword123!'}).json()
     assert client.post(f'/api/admin/events/{TOKEN}/access-preview',headers={'Authorization':f'Bearer {other["access_token"]}'}).status_code==404
     assert client.post(f'/api/events/{TOKEN}/unlock',json={'code':'TestCode123'}).status_code==200
     from app.api import event_access
