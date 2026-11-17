@@ -134,6 +134,10 @@ def mount_frontend(app: FastAPI, frontend_dir) -> None:
     def public_upload_invitation(event_token: str):
         return FileResponse(frontend_dir / "app.html", headers=PRIVATE_HEADERS)
 
+    @app.get("/e/{event_token}/slayt")
+    def public_slideshow_page(event_token: str):
+        return FileResponse(frontend_dir / "slideshow.html", headers=PRIVATE_HEADERS)
+
     @app.get("/app.html")
     def invitation_editor():
         return FileResponse(frontend_dir / "app.html")

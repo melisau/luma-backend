@@ -49,7 +49,7 @@ def _check_event_access(request: Request, db: Session):
         photo_id=request.path_params.get('photo_id')
         if photo_id:
             event=db.query(Event).join(Photo).filter(Photo.id==photo_id).one_or_none()
-            if event and not event.album_public:
+            if event and not event.album_public and not slideshow_photo_visible(request,db,event,photo_id):
                 raise HTTPException(status_code=404,detail='Fotoğraf bulunamadı.')
     from app.services.rate_limit import owner_can_reach_guests
     if event and not owner_can_reach_guests(event):
@@ -131,6 +131,15 @@ def _owner_preview_valid(request: Request, event: Event) -> bool:
         return int(expires)>int(time.time()) and hmac.compare_digest(preview_signature(event,expires),digest)
     except (ValueError,TypeError):
         return False
+
+
+def slideshow_photo_visible(request: Request, db: Session, event: Event, photo_id: str) -> bool:
+    """A photo in the slide show is visible on the owner's screen (panel preview cookie), e.g. the
+    venue screen, even when the album is not shared with guests."""
+    from app.services import slideshow
+    if not (_owner_preview_valid(request, event) or slideshow.guests_can_watch(event)):
+        return False
+    return slideshow.contains(db, event, photo_id)
 
 
 class UnlockInput(BaseModel):
